@@ -18,6 +18,16 @@ import numpy as np
 from imutils import contours as imutils_contours
 
 
+def grab_contours(cnts):
+    """Handle OpenCV 3.x vs 4.x findContours return value difference."""
+    if len(cnts) == 2:
+        return cnts[0]
+    elif len(cnts) == 3:
+        return cnts[1]
+    else:
+        raise ValueError("Unexpected findContours return value")
+
+
 def order_points(pts):
     rect = np.zeros((4, 2), dtype="float32")
     s = pts.sum(axis=1)
@@ -50,12 +60,15 @@ def get_bubble_centroid(contour):
 
 def get_contours_adaptive(roi_gray):
     thresh = cv2.adaptiveThreshold(
-        roi_gray, 255,
+        roi_gray,
+        255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
-        31, 8,
+        31,
+        8,
     )
-    cnts, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = grab_contours(cnts)
     bubbles = []
     for c in cnts:
         (_, _, w, h) = cv2.boundingRect(c)
@@ -65,60 +78,9 @@ def get_contours_adaptive(roi_gray):
         if perimeter == 0:
             continue
         circularity = 4 * np.pi * (area / (perimeter * perimeter))
-        if (
-            12 <= w <= 40
-            and 12 <= h <= 40
-            and 0.7 <= ar <= 1.3
-            and circularity > 0.6
-        ):
+        if 12 <= w <= 40 and 12 <= h <= 40 and 0.7 <= ar <= 1.3 and circularity > 0.6:
             bubbles.append(c)
     return bubbles, thresh
-
-
-def cluster_answer_bubbles(bubbles, image_shape, total_questions, options_per_question):
-    """
-    Cluster detected bubbles into question rows.
-    Splits page into left/right columns if questions > threshold.
-    Returns list of detected answers (A-E) in question order.
-    """
-    if len(bubbles) == 0:
-        return []
-
-    h, w = image_shape
-    bubble_data = []
-    for b in bubbles:
-        cx, cy = get_bubble_centroid(b)
-        bubble_data.append({"contour": b, "x": cx, "y": cy})
-
-    # Answer bubbles: bottom portion of image (below roll section)
-    roll_threshold_y = h * 0.32
-    answer_bubbles = [b for b in bubble_data if b["y"] >= roll_threshold_y]
-
-    # Determine if we need two columns
-    use_two_cols = total_questions > 20
-    mid_x = w * 0.50
-
-    if use_two_cols:
-        left_q_count = (total_questions + 1) // 2
-        right_q_count = total_questions // 2
-        left_bubbles = [b["contour"] for b in answer_bubbles if b["x"] < mid_x]
-        right_bubbles = [b["contour"] for b in answer_bubbles if b["x"] >= mid_x]
-        sections = [
-            {"bubbles": left_bubbles, "count": left_q_count},
-            {"bubbles": right_bubbles, "count": right_q_count},
-        ]
-    else:
-        sections = [
-            {"bubbles": [b["contour"] for b in answer_bubbles], "count": total_questions},
-        ]
-
-    option_labels = ["A", "B", "C", "D", "E"][:options_per_question]
-    detected_answers = []
-
-    # Get a threshold image for pixel counting
-    # We reuse the thresh from the outer call (passed via closure not possible here)
-    # We'll recompute it — this is a minor overhead but keeps code clean
-    return option_labels, sections
 
 
 def process_omr_image(image_path, total_questions, options_per_question):
@@ -135,15 +97,19 @@ def process_omr_image(image_path, total_questions, options_per_question):
     height, width = image.shape[:2]
     if max(height, width) > max_dimension:
         scale = max_dimension / max(height, width)
-        image = cv2.resize(image, (int(width * scale), int(height * scale)),
-                           interpolation=cv2.INTER_AREA)
+        image = cv2.resize(
+            image,
+            (int(width * scale), int(height * scale)),
+            interpolation=cv2.INTER_AREA,
+        )
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     edged = cv2.Canny(blurred, 75, 200)
 
     # Find document corners for perspective correction
-    cnts, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = grab_contours(cnts)
     docCnt = None
     if len(cnts) > 0:
         cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
@@ -162,6 +128,8 @@ def process_omr_image(image_path, total_questions, options_per_question):
     # Detect all bubble contours using adaptive threshold
     all_bubbles, thresh = get_contours_adaptive(warped_gray)
 
+    print(f"DEBUG [Replit]: Found {len(all_bubbles)} total bubbles", file=sys.stderr)
+
     img_h, img_w = warped_gray.shape
     bubble_data = []
     for b in all_bubbles:
@@ -172,9 +140,32 @@ def process_omr_image(image_path, total_questions, options_per_question):
     roll_threshold_y = img_h * 0.32
     answer_bubbles_data = [b for b in bubble_data if b["y"] >= roll_threshold_y]
 
-    # Determine column layout
-    use_two_cols = total_questions > 20
+    print(
+        f"DEBUG [Replit]: Answer section has {len(answer_bubbles_data)} bubbles (y >= {roll_threshold_y:.0f})",
+        file=sys.stderr,
+    )
+
+    # Filter out any bubbles that are too far left (potential noise)
+    if len(answer_bubbles_data) > 0:
+        all_x = [b["x"] for b in answer_bubbles_data]
+        min_x_threshold = min(all_x) + (max(all_x) - min(all_x)) * 0.05
+        answer_bubbles_data = [
+            b for b in answer_bubbles_data if b["x"] >= min_x_threshold
+        ]
+
+    # ALWAYS split answer bubbles into left/right columns based on physical layout
     mid_x = img_w * 0.50
+    left_answer_bubbles = [b for b in answer_bubbles_data if b["x"] < mid_x]
+    right_answer_bubbles = [b for b in answer_bubbles_data if b["x"] >= mid_x]
+
+    print(
+        f"DEBUG [Replit]: Split into LEFT={len(left_answer_bubbles)} bubbles, RIGHT={len(right_answer_bubbles)} bubbles (mid_x={mid_x:.0f})",
+        file=sys.stderr,
+    )
+
+    # Determine question distribution
+    left_q_count = (total_questions + 1) // 2
+    right_q_count = total_questions - left_q_count
 
     option_labels = ["A", "B", "C", "D", "E"][:options_per_question]
     detected_answers = []
@@ -202,12 +193,17 @@ def process_omr_image(image_path, total_questions, options_per_question):
         for c in sorted_bubbles[1:]:
             (_, by, _, _) = cv2.boundingRect(c)
             (_, last_y, _, _) = cv2.boundingRect(current_row[-1])
-            if abs(by - last_y) < 20:
+            if abs(by - last_y) < 10:
                 current_row.append(c)
             else:
                 rows.append(current_row)
                 current_row = [c]
         rows.append(current_row)
+
+        print(
+            f"DEBUG [Replit]: Section has {len(section_bubbles)} bubbles grouped into {len(rows)} rows",
+            file=sys.stderr,
+        )
 
         # For each row, pick the darkest bubble
         for row_idx, row in enumerate(rows):
@@ -219,8 +215,12 @@ def process_omr_image(image_path, total_questions, options_per_question):
 
             # Filter to expected number of options: take the N largest by area
             if len(row) > options_per_question:
-                row = sorted(row, key=cv2.contourArea, reverse=True)[:options_per_question]
-                row = imutils_contours.sort_contours(row, method="left-to-right")[0]
+                row = sorted(row, key=cv2.contourArea, reverse=True)[
+                    :options_per_question
+                ]
+
+            # Always re-sort left-to-right after filtering
+            row = imutils_contours.sort_contours(row, method="left-to-right")[0]
 
             if len(row) < 2:
                 answers.append("")
@@ -235,21 +235,30 @@ def process_omr_image(image_path, total_questions, options_per_question):
                 masked = cv2.bitwise_and(thresh, thresh, mask=mask)
                 pixels.append(cv2.countNonZero(masked))
 
-            total_pixels = sum(pixels)
+            if max(pixels) == 0:
+                answers.append("")
+                confs.append(0.0)
+                continue
+
             best_idx = int(np.argmax(pixels))
             best_pixels = pixels[best_idx]
+            total_pixels = sum(pixels)
 
-            # Confidence: ratio of best vs total fill
-            conf = best_pixels / max(total_pixels, 1)
+            conf = best_pixels / max(total_pixels, 1) if total_pixels > 0 else 0.0
 
-            # Require the winner to be meaningfully filled to avoid blank bubbles
-            # Use a relative threshold: best must be > 25% of total pixels seen
-            if best_pixels > 30 and conf > 0.25:
-                if best_idx < len(option_labels):
-                    answers.append(option_labels[best_idx])
+            # Winner must have at least 20 pixels filled and be at least 10% above average
+            if best_pixels > 20:
+                avg_pixels = total_pixels / len(pixels)
+                if best_pixels > avg_pixels * 1.1:
+                    if best_idx < len(option_labels):
+                        answers.append(option_labels[best_idx])
+                        confs.append(min(1.0, conf))
+                    else:
+                        answers.append("")
+                        confs.append(0.0)
                 else:
                     answers.append("")
-                confs.append(min(1.0, conf))
+                    confs.append(0.0)
             else:
                 answers.append("")
                 confs.append(0.0)
@@ -261,21 +270,15 @@ def process_omr_image(image_path, total_questions, options_per_question):
 
         return answers[:q_count], confs[:q_count]
 
-    if use_two_cols:
-        left_q_count = (total_questions + 1) // 2
-        right_q_count = total_questions - left_q_count
+    # Process left and right columns separately (physical sheet layout)
+    left_contours = [b["contour"] for b in left_answer_bubbles]
+    right_contours = [b["contour"] for b in right_answer_bubbles]
 
-        left_contours = [b["contour"] for b in answer_bubbles_data if b["x"] < mid_x]
-        right_contours = [b["contour"] for b in answer_bubbles_data if b["x"] >= mid_x]
+    left_answers, left_conf = process_section(left_contours, left_q_count)
+    right_answers, right_conf = process_section(right_contours, right_q_count)
 
-        left_answers, left_conf = process_section(left_contours, left_q_count)
-        right_answers, right_conf = process_section(right_contours, right_q_count)
-
-        detected_answers = left_answers + right_answers
-        confidence_scores = left_conf + right_conf
-    else:
-        all_contours = [b["contour"] for b in answer_bubbles_data]
-        detected_answers, confidence_scores = process_section(all_contours, total_questions)
+    detected_answers = left_answers + right_answers
+    confidence_scores = left_conf + right_conf
 
     return {
         "detectedAnswers": detected_answers,
@@ -285,7 +288,13 @@ def process_omr_image(image_path, total_questions, options_per_question):
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print(json.dumps({"error": "Usage: omr_processor.py <image_path> <total_questions> <options_per_question>"}))
+        print(
+            json.dumps(
+                {
+                    "error": "Usage: omr_processor.py <image_path> <total_questions> <options_per_question>"
+                }
+            )
+        )
         sys.exit(1)
 
     image_path = sys.argv[1]
@@ -297,5 +306,6 @@ if __name__ == "__main__":
         print(json.dumps(result))
     except Exception as e:
         import traceback
+
         print(json.dumps({"error": str(e), "trace": traceback.format_exc()}))
         sys.exit(1)
