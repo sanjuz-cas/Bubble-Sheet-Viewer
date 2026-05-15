@@ -219,7 +219,7 @@ export default function ScanScreen() {
                 onPress={() => pickImage(false)}
               >
                 <LinearGradient
-                  colors={[C.secondary, '#78D4A8']}
+                  colors={[C.secondary, C.primaryDark]}
                   style={styles.captureBtnGradient}
                 >
                   <Ionicons name="images" size={36} color={C.white} />
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#EDF6FF',
+    backgroundColor: C.sky,
     borderRadius: 14,
     padding: 14,
   },

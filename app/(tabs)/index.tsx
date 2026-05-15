@@ -87,12 +87,12 @@ export default function HomeScreen() {
             <Text style={styles.statLabel}>Scans</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: C.secondaryLight }]}>
-            <Ionicons name="key" size={22} color="#6BBF8A" />
+            <Ionicons name="key" size={22} color={C.secondary} />
             <Text style={styles.statValue}>{keys.length}</Text>
             <Text style={styles.statLabel}>Keys</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: '#FFE8D6' }]}>
-            <Ionicons name="star" size={22} color="#E5A06B" />
+          <View style={[styles.statCard, { backgroundColor: '#2A1F10' }]}>
+            <Ionicons name="star" size={22} color={C.warning} />
             <Text style={styles.statValue}>{avgScore}%</Text>
             <Text style={styles.statLabel}>Avg</Text>
           </View>

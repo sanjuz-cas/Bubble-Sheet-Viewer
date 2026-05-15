@@ -87,17 +87,17 @@ export default function ScanResultScreen() {
         </LinearGradient>
 
         <View style={styles.statsRow}>
-          <View style={[styles.statBox, { backgroundColor: '#E8F5E9' }]}>
+          <View style={[styles.statBox, { backgroundColor: '#0F2210' }]}>
             <Ionicons name="checkmark-circle" size={20} color={C.success} />
             <Text style={styles.statValue}>{correctCount}</Text>
             <Text style={styles.statLabel}>Correct</Text>
           </View>
-          <View style={[styles.statBox, { backgroundColor: '#FFEBEE' }]}>
+          <View style={[styles.statBox, { backgroundColor: '#220F0F' }]}>
             <Ionicons name="close-circle" size={20} color={C.error} />
             <Text style={styles.statValue}>{incorrectCount}</Text>
             <Text style={styles.statLabel}>Wrong</Text>
           </View>
-          <View style={[styles.statBox, { backgroundColor: '#FFF3E0' }]}>
+          <View style={[styles.statBox, { backgroundColor: '#221A0A' }]}>
             <Ionicons name="remove-circle" size={20} color={C.warning} />
             <Text style={styles.statValue}>{unanswered}</Text>
             <Text style={styles.statLabel}>Blank</Text>
@@ -122,8 +122,8 @@ export default function ScanResultScreen() {
                 style={[
                   styles.detailItem,
                   {
-                    backgroundColor: q.isCorrect ? '#E8F5E9' : !q.selected ? '#FFF3E0' : '#FFEBEE',
-                    borderColor: q.isCorrect ? '#A5D6A7' : !q.selected ? '#FFE0B2' : '#EF9A9A',
+                    backgroundColor: q.isCorrect ? '#0F2210' : !q.selected ? '#221A0A' : '#220F0F',
+                    borderColor: q.isCorrect ? '#1E4A20' : !q.selected ? '#3A2A10' : '#4A1A1A',
                   },
                 ]}
               >
