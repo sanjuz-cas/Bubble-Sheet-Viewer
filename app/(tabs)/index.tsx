@@ -91,7 +91,7 @@ export default function HomeScreen() {
             <Text style={styles.statValue}>{keys.length}</Text>
             <Text style={styles.statLabel}>Keys</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: '#2A1F10' }]}>
+          <View style={[styles.statCard, { backgroundColor: '#1E1508' }]}>
             <Ionicons name="star" size={22} color={C.warning} />
             <Text style={styles.statValue}>{avgScore}%</Text>
             <Text style={styles.statLabel}>Avg</Text>
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   card: {
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   resultItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderRadius: 16,
     padding: 14,
     marginBottom: 10,

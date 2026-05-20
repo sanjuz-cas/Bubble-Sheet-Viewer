@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   chartCard: {
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   resultCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,

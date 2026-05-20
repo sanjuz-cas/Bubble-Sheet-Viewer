@@ -256,7 +256,7 @@ export default function ScanScreen() {
 
         {selectedKey ? (
           <View style={[styles.infoCard, { marginTop: 20 }]}>
-            <Ionicons name="information-circle" size={20} color={C.sky} />
+            <Ionicons name="information-circle" size={20} color={C.secondary} />
             <View style={styles.infoContent}>
               <Text style={styles.infoTitle}>Selected: {selectedKey.name}</Text>
               <Text style={styles.infoText}>
@@ -300,9 +300,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 14,
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderWidth: 1.5,
-    borderColor: C.primaryLight,
+    borderColor: C.cardBorder,
   },
   keyChipActive: {
     backgroundColor: C.primary,
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1.5,
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
   previewContainer: {
     borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.cardBorder,
   },

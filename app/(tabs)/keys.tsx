@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   keyCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,

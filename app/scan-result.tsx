@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   card: {
-    backgroundColor: C.white,
+    backgroundColor: C.card,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
