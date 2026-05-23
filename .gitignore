@@ -39,3 +39,30 @@ yarn-error.*
 .vercel
 
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+build/
+develop-eggs/
+inst/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.venv
+venv/
+ENV/
+
+# Local environment stuff
+.local/
+.config/
+.agents/
+.replit
+
+# App specific data
+updated_omr_report.pdf
+
