@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
+import { AuthProvider } from "@/contexts/AuthContext";
 import {
   useFonts,
   Nunito_400Regular,
@@ -20,20 +21,16 @@ try { SplashScreen.preventAutoHideAsync(); } catch {}
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Back" }}>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="edit-key"
-        options={{
-          headerShown: false,
-          presentation: "modal",
-        }}
+        options={{ headerShown: false, presentation: "modal" }}
       />
       <Stack.Screen
         name="scan-result"
-        options={{
-          headerShown: false,
-          presentation: "modal",
-        }}
+        options={{ headerShown: false, presentation: "modal" }}
       />
     </Stack>
   );
@@ -67,11 +64,13 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <GestureHandlerRootView>
-          <KeyboardProvider>
-            <RootLayoutNav />
-          </KeyboardProvider>
-        </GestureHandlerRootView>
+        <AuthProvider>
+          <GestureHandlerRootView>
+            <KeyboardProvider>
+              <RootLayoutNav />
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

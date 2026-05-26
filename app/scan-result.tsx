@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import {
-  StyleSheet, Text, View, ScrollView, Pressable, Platform,
+  StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { ScoreRing } from '@/components/ScoreRing';
 import { BarChart } from '@/components/BarChart';
 import { getScanResults } from '@/lib/storage';
 import { getGrade, getGradeColor } from '@/lib/types';
 import type { ScanResult } from '@/lib/types';
+import { getApiUrl } from '@/lib/query-client';
+import { getAuthToken } from '@/lib/auth-token';
 import Colors from '@/constants/colors';
 
 const C = Colors.light;
@@ -51,7 +55,33 @@ export default function ScanResultScreen() {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([label, value]) => ({ label, value }));
 
+  const [exporting, setExporting] = useState(false);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
+
+  const exportExcel = async () => {
+    if (!result) return;
+    setExporting(true);
+    try {
+      const url = `${getApiUrl()}api/results/${result.id}/export`;
+      const token = getAuthToken();
+      const dest = `${FileSystem.documentDirectory}bubblescan_result.xlsx`;
+      const dl = await FileSystem.downloadAsync(url, dest, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (dl.status === 200) {
+        await Sharing.shareAsync(dl.uri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Export as Excel',
+        });
+      } else {
+        Alert.alert('Export failed', 'Could not generate the file.');
+      }
+    } catch (e: any) {
+      Alert.alert('Export failed', e.message || 'Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -60,7 +90,12 @@ export default function ScanResultScreen() {
           <Ionicons name="close" size={26} color={C.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Scan Result</Text>
-        <View style={{ width: 26 }} />
+        <Pressable onPress={exportExcel} disabled={exporting} hitSlop={12}>
+          {exporting
+            ? <ActivityIndicator size="small" color={C.primary} />
+            : <Ionicons name="share-outline" size={24} color={C.text} />
+          }
+        </Pressable>
       </View>
 
       <ScrollView

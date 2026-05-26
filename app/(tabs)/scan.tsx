@@ -11,6 +11,7 @@ import * as Crypto from 'expo-crypto';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { getApiUrl } from '@/lib/query-client';
+import { getAuthToken } from '@/lib/auth-token';
 import { getAnswerKeys, saveScanResult } from '@/lib/storage';
 import type { AnswerKey, ScanResult, QuestionResult } from '@/lib/types';
 import Colors from '@/constants/colors';
@@ -82,8 +83,10 @@ export default function ScanScreen() {
       formData.append('correctAnswers', JSON.stringify(selectedKey.answers));
 
       const baseUrl = getApiUrl();
+      const token = getAuthToken();
       const res = await fetch(`${baseUrl}api/scan`, {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
 

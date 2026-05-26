@@ -1,46 +1,59 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getApiUrl } from './query-client';
+import { authHeaders } from './auth-token';
 import type { AnswerKey, ScanResult } from './types';
 
-const KEYS_STORAGE = '@bubblescan_keys';
-const RESULTS_STORAGE = '@bubblescan_results';
+function apiUrl(path: string): string {
+  return `${getApiUrl()}${path}`;
+}
 
 export async function getAnswerKeys(): Promise<AnswerKey[]> {
-  const data = await AsyncStorage.getItem(KEYS_STORAGE);
-  return data ? JSON.parse(data) : [];
+  try {
+    const res = await fetch(apiUrl('api/keys'), { headers: authHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
 }
 
 export async function saveAnswerKey(key: AnswerKey): Promise<void> {
-  const keys = await getAnswerKeys();
-  const idx = keys.findIndex(k => k.id === key.id);
-  if (idx >= 0) {
-    keys[idx] = key;
-  } else {
-    keys.unshift(key);
-  }
-  await AsyncStorage.setItem(KEYS_STORAGE, JSON.stringify(keys));
+  await fetch(apiUrl('api/keys'), {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(key),
+  });
 }
 
 export async function deleteAnswerKey(id: string): Promise<void> {
-  const keys = await getAnswerKeys();
-  await AsyncStorage.setItem(KEYS_STORAGE, JSON.stringify(keys.filter(k => k.id !== id)));
+  await fetch(apiUrl(`api/keys/${id}`), {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
 }
 
 export async function getScanResults(): Promise<ScanResult[]> {
-  const data = await AsyncStorage.getItem(RESULTS_STORAGE);
-  return data ? JSON.parse(data) : [];
+  try {
+    const res = await fetch(apiUrl('api/results'), { headers: authHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
 }
 
 export async function saveScanResult(result: ScanResult): Promise<void> {
-  const results = await getScanResults();
-  results.unshift(result);
-  await AsyncStorage.setItem(RESULTS_STORAGE, JSON.stringify(results));
+  await fetch(apiUrl('api/results'), {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(result),
+  });
 }
 
 export async function deleteScanResult(id: string): Promise<void> {
-  const results = await getScanResults();
-  await AsyncStorage.setItem(RESULTS_STORAGE, JSON.stringify(results.filter(r => r.id !== id)));
+  await fetch(apiUrl(`api/results/${id}`), {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
 }
 
-export async function clearAllData(): Promise<void> {
-  await AsyncStorage.multiRemove([KEYS_STORAGE, RESULTS_STORAGE]);
-}
+export async function clearAllData(): Promise<void> {}

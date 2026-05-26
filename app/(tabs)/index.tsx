@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import {
-  StyleSheet, Text, View, ScrollView, Pressable, RefreshControl, Platform,
+  StyleSheet, Text, View, ScrollView, Pressable, RefreshControl, Platform, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 import { ScoreRing } from '@/components/ScoreRing';
 import { BarChart } from '@/components/BarChart';
 import { getAnswerKeys, getScanResults } from '@/lib/storage';
@@ -17,9 +18,23 @@ const C = Colors.light;
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { user, logout } = useAuth();
   const [keys, setKeys] = useState<AnswerKey[]>([]);
   const [results, setResults] = useState<ScanResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+
+  const handleLogout = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out', style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
+  };
 
   const loadData = useCallback(async () => {
     const [k, r] = await Promise.all([getAnswerKeys(), getScanResults()]);
@@ -72,11 +87,11 @@ export default function HomeScreen() {
           <View style={styles.headerContent}>
             <View style={styles.headerTextArea}>
               <Text style={styles.greeting}>BubbleScan</Text>
-              <Text style={styles.subtitle}>Your adorable OMR grader</Text>
+              <Text style={styles.subtitle}>{user?.username ?? 'Your OMR grader'}</Text>
             </View>
-            <View style={styles.headerIcon}>
-              <Ionicons name="sparkles" size={32} color={C.white} />
-            </View>
+            <Pressable onPress={handleLogout} style={styles.headerIcon} hitSlop={8}>
+              <Ionicons name="log-out-outline" size={26} color={C.white} />
+            </Pressable>
           </View>
         </LinearGradient>
 

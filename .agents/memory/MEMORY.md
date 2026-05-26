@@ -1,0 +1,3 @@
+- [Metro crash fix](metro-crash-fix.md) — Metro crashes watching deleted Replit temp dirs; fix is blockList in metro.config.js
+- [Expo package versions](expo-package-versions.md) — use installLanguagePackages with pinned versions like `expo-secure-store@~15.0.8`; npm latest picks wrong 56.x
+- [Auth architecture](auth-architecture.md) — JWT+bcrypt auth; AES-256-GCM encrypt at rest; token in lib/auth-token.ts module-level store
