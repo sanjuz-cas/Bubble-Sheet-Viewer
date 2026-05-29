@@ -94,6 +94,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ userId: (req as any).userId });
   });
 
+  app.post("/api/auth/verify", requireAuth, async (req: Request, res: Response) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: "Password required" });
+    const userId = (req as any).userId;
+    try {
+      const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+      if (!user || !(await verifyPassword(password, user.password))) {
+        return res.status(401).json({ error: "Incorrect password" });
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
   // ── Answer Keys ───────────────────────────────────────────────────────
 
   app.get("/api/keys", requireAuth, async (req: Request, res: Response) => {
@@ -237,23 +252,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const details = wb.addWorksheet("Question Details");
     details.columns = [
-      { header: "Q#", key: "q", width: 8 },
-      { header: "Student Answer", key: "student", width: 18 },
-      { header: "Correct Answer", key: "correct", width: 18 },
-      { header: "Result", key: "result", width: 14 },
+      { header: "Question",        key: "q",       width: 12 },
+      { header: "Student Marked",  key: "student", width: 18 },
+      { header: "Correct Answer",  key: "correct", width: 18 },
+      { header: "Status",          key: "status",  width: 12 },
+      { header: "Notes",           key: "notes",   width: 36 },
     ];
-    details.getRow(1).font = { bold: true, size: 12 };
+    const hdr = details.getRow(1);
+    hdr.font = { bold: true, size: 12 };
+    hdr.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E1B2E" } };
+    hdr.font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
+
     for (const q of (data.questionResults || [])) {
+      const isBlank = !q.selected;
+      const statusText = q.isCorrect ? "✓ Correct" : isBlank ? "— Blank" : "✗ Wrong";
+      const notes = q.isCorrect
+        ? `Correctly marked option ${q.correct}`
+        : isBlank
+          ? `No answer — correct option is ${q.correct}`
+          : `Marked option ${q.selected} — correct option is ${q.correct}`;
+
       const r2 = details.addRow({
-        q: q.questionNumber,
-        student: q.selected || "-",
+        q:       `Q${q.questionNumber}`,
+        student: q.selected || "No answer",
         correct: q.correct,
-        result: q.isCorrect ? "Correct" : q.selected ? "Wrong" : "Blank",
+        status:  statusText,
+        notes,
       });
-      r2.getCell("result").font = {
-        color: {
-          argb: q.isCorrect ? "FF10B981" : q.selected ? "FFF43F5E" : "FFFBBF24",
-        },
+
+      const statusArgb = q.isCorrect ? "FF10B981" : isBlank ? "FFFBBF24" : "FFF43F5E";
+      r2.getCell("status").font  = { color: { argb: statusArgb }, bold: true };
+      r2.getCell("student").font = { bold: !q.isCorrect && !isBlank };
+      r2.getCell("student").font = {
+        color: { argb: q.isCorrect ? "FF10B981" : isBlank ? "FFFBBF24" : "FFF43F5E" },
+        bold: true,
       };
     }
 
