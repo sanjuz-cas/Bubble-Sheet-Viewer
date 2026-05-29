@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
-  StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert, ActivityIndicator,
+  StyleSheet, Text, View, ScrollView, Pressable, Platform, Alert, ActivityIndicator, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { ScoreRing } from '@/components/ScoreRing';
 import { BarChart } from '@/components/BarChart';
 import { getScanResults } from '@/lib/storage';
@@ -79,18 +77,8 @@ export default function ScanResultScreen() {
         document.body.removeChild(a);
         URL.revokeObjectURL(objectUrl);
       } else {
-        const dest = `${FileSystem.documentDirectory}bubblescan_result.xlsx`;
-        const dl = await FileSystem.downloadAsync(url, dest, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (dl.status === 200) {
-          await Sharing.shareAsync(dl.uri, {
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            dialogTitle: 'Export as Excel',
-          });
-        } else {
-          Alert.alert('Export failed', 'Could not generate the file.');
-        }
+        const downloadUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url;
+        await Linking.openURL(downloadUrl);
       }
     } catch (e: any) {
       Alert.alert('Export failed', e.message || 'Please try again.');

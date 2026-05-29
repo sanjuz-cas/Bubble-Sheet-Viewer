@@ -201,8 +201,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Excel Export ──────────────────────────────────────────────────────
 
-  app.get("/api/results/:id/export", requireAuth, async (req: Request, res: Response) => {
-    const userId = (req as any).userId;
+  app.get("/api/results/:id/export", async (req: Request, res: Response) => {
+    // Accept token from Authorization header OR ?token= query param (for mobile link opens)
+    const authHeader = req.headers.authorization;
+    const queryToken = req.query.token as string | undefined;
+    const rawToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : queryToken;
+    if (!rawToken) return res.status(401).json({ error: "Unauthorized" });
+    const payload = verifyToken(rawToken);
+    if (!payload) return res.status(401).json({ error: "Invalid or expired token" });
+    const userId = payload.userId;
     const row = await db.query.scanResults.findFirst({
       where: and(eq(scanResults.id, req.params.id), eq(scanResults.userId, userId)),
     });
