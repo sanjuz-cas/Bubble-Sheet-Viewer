@@ -23,6 +23,7 @@ export default function ScanResultScreen() {
   const insets = useSafeAreaInsets();
   const { resultId } = useLocalSearchParams<{ resultId: string }>();
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     getScanResults().then(results => {
@@ -54,8 +55,6 @@ export default function ScanResultScreen() {
   const distData = Object.entries(answerDistribution)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([label, value]) => ({ label, value }));
-
-  const [exporting, setExporting] = useState(false);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
   const exportExcel = async () => {
@@ -64,17 +63,34 @@ export default function ScanResultScreen() {
     try {
       const url = `${getApiUrl()}api/results/${result.id}/export`;
       const token = getAuthToken();
-      const dest = `${FileSystem.documentDirectory}bubblescan_result.xlsx`;
-      const dl = await FileSystem.downloadAsync(url, dest, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (dl.status === 200) {
-        await Sharing.shareAsync(dl.uri, {
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          dialogTitle: 'Export as Excel',
+
+      if (Platform.OS === 'web') {
+        const res = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
+        if (!res.ok) { Alert.alert('Export failed', 'Could not generate the file.'); return; }
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = `bubblescan_${result.answerKeyName.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(objectUrl);
       } else {
-        Alert.alert('Export failed', 'Could not generate the file.');
+        const dest = `${FileSystem.documentDirectory}bubblescan_result.xlsx`;
+        const dl = await FileSystem.downloadAsync(url, dest, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (dl.status === 200) {
+          await Sharing.shareAsync(dl.uri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Export as Excel',
+          });
+        } else {
+          Alert.alert('Export failed', 'Could not generate the file.');
+        }
       }
     } catch (e: any) {
       Alert.alert('Export failed', e.message || 'Please try again.');
