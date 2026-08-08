@@ -23,7 +23,7 @@ export default function EditKeyScreen() {
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('Math');
   const [totalQuestions, setTotalQuestions] = useState('30');
-  const [optionsCount, setOptionsCount] = useState(4);
+  const [optionsCount, setOptionsCount] = useState(6);
   const [answers, setAnswers] = useState<string[]>([]);
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export default function EditKeyScreen() {
   }, [keyId]);
 
   const qCount = parseInt(totalQuestions) || 0;
-  const optionLabels = ['A', 'B', 'C', 'D', 'E'].slice(0, optionsCount);
+  const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, optionsCount);
 
   useEffect(() => {
     if (qCount > 0 && answers.length !== qCount) {
@@ -141,7 +141,7 @@ export default function EditKeyScreen() {
           <View style={[styles.inputGroup, { flex: 1 }]}>
             <Text style={styles.label}>Options</Text>
             <View style={styles.optionSelector}>
-              {[3, 4, 5].map(n => (
+              {[3, 4, 5, 6].map(n => (
                 <Pressable
                   key={n}
                   style={[styles.optionBtn, optionsCount === n && styles.optionBtnActive]}

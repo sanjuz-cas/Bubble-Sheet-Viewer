@@ -6,6 +6,9 @@ import { tmpdir } from "node:os";
 interface OMRResult {
   detectedAnswers: string[];
   confidence: number[];
+  detectedSet?: string;
+  detectedRollNumber?: string;
+  rollConfidence?: number[];
 }
 
 export async function processOMRImage(

@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 """
 BubbleScan OMR Processor
-Core algorithm adapted from user's omr_core.py
-Uses OpenCV for real computer vision bubble detection.
+
+The supported sheet is the uploaded BubbleScan template:
+  * A4-like portrait page with registration corners
+  * 6 set bubbles
+  * 5 roll-number columns with 10 digits each
+  * 2 answer columns, 5 rows each, with up to 6 options (A-F)
+
+The template is read from calibrated, page-relative coordinates after the
+perspective correction.  This is deliberately more stable than detecting the
+printed circle outlines as contours: outlines, table borders, and text all
+produce similarly sized contours in a camera image.
 
 Usage:
   python3 omr_processor.py <image_path> <total_questions> <options_per_question>
@@ -15,7 +24,6 @@ import sys
 import json
 import cv2
 import numpy as np
-from imutils import contours as imutils_contours
 
 
 def grab_contours(cnts):
@@ -41,7 +49,9 @@ def order_points(pts):
 
 def four_point_transform(image, pts):
     rect = order_points(pts)
-    width, height = 800, 1131
+    # The supplied template's printable page is approximately 2:3.  Keeping
+    # this aspect ratio prevents the fixed calibration points from drifting.
+    width, height = 800, 1200
     dst = np.array(
         [[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]],
         dtype="float32",
@@ -50,37 +60,63 @@ def four_point_transform(image, pts):
     return cv2.warpPerspective(image, M, (width, height))
 
 
-def get_bubble_centroid(contour):
-    M = cv2.moments(contour)
-    if M["m00"] == 0:
-        x, y, w, h = cv2.boundingRect(contour)
-        return (x + w // 2, y + h // 2)
-    return (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+CANVAS_SIZE = (800, 1200)
+
+# Coordinates are measured from the uploaded template's page rectangle and
+# stored as fractions so the same calibration survives camera resolutions.
+# The source image page is 1020 x 1530; these values intentionally use the
+# centers of the printed circles, not their outer contour.
+SET_POINTS = [(x / 1020.0, 212 / 1530.0) for x in (250, 356, 460, 566, 668, 770)]
+ROLL_X = [x / 1020.0 for x in (250, 386, 524, 660, 794)]
+ROLL_Y = [y / 1530.0 for y in (436, 484, 532, 580, 628, 676, 724, 772, 820, 868)]
+ANSWER_X = [
+    x / 1020.0
+    for x in (178, 236, 294, 352, 410, 468, 616, 674, 734, 792, 850, 908)
+]
+ANSWER_Y = [y / 1530.0 for y in (1082, 1148, 1216, 1284, 1352)]
 
 
-def get_contours_adaptive(roi_gray):
-    thresh = cv2.adaptiveThreshold(
-        roi_gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        31,
-        8,
+def calibrated_point(x_fraction, y_fraction):
+    return (
+        int(round(x_fraction * CANVAS_SIZE[0])),
+        int(round(y_fraction * CANVAS_SIZE[1])),
     )
-    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = grab_contours(cnts)
-    bubbles = []
-    for c in cnts:
-        (_, _, w, h) = cv2.boundingRect(c)
-        ar = w / float(h)
-        area = cv2.contourArea(c)
-        perimeter = cv2.arcLength(c, True)
-        if perimeter == 0:
-            continue
-        circularity = 4 * np.pi * (area / (perimeter * perimeter))
-        if 12 <= w <= 40 and 12 <= h <= 40 and 0.7 <= ar <= 1.3 and circularity > 0.6:
-            bubbles.append(c)
-    return bubbles, thresh
+
+
+def sample_mark_score(gray, point):
+    """Return ink density in a bubble center, normalized for lighting.
+
+    The printed outline is outside the inner disk.  Comparing the center to
+    a nearby background annulus makes this work with both flat scans and
+    unevenly lit phone photos.
+    """
+    x, y = point
+    inner_radius = 5
+    outer_inner_radius = 12
+    outer_radius = 16
+    inner_mask = np.zeros(gray.shape, dtype=np.uint8)
+    outer_mask = np.zeros(gray.shape, dtype=np.uint8)
+    cv2.circle(inner_mask, (x, y), inner_radius, 255, -1)
+    cv2.circle(outer_mask, (x, y), outer_radius, 255, -1)
+    cv2.circle(outer_mask, (x, y), outer_inner_radius, 0, -1)
+    inner = cv2.mean(gray, mask=inner_mask)[0]
+    outer = cv2.mean(gray, mask=outer_mask)[0]
+    # A blank center is close to the surrounding paper; a pencil/pen mark is
+    # substantially darker. Clamp small print/scanner variations to zero.
+    return max(0.0, min(1.0, (outer - inner) / 255.0))
+
+
+def read_calibrated_grid(gray, points, labels):
+    scores = [sample_mark_score(gray, point) for point in points]
+    best_idx = int(np.argmax(scores)) if scores else 0
+    best = scores[best_idx] if scores else 0.0
+    second = sorted(scores, reverse=True)[1] if len(scores) > 1 else 0.0
+
+    # The unmarked template has scores around zero.  Require both meaningful
+    # ink and separation from the next choice to avoid calling scan noise a
+    # response.
+    marked = best >= 0.12 and (best - second >= 0.035 or best >= 0.28)
+    return (labels[best_idx] if marked else "", best if marked else 0.0, scores)
 
 
 def process_omr_image(image_path, total_questions, options_per_question):
@@ -112,177 +148,104 @@ def process_omr_image(image_path, total_questions, options_per_question):
     cnts = grab_contours(cnts)
     docCnt = None
     if len(cnts) > 0:
+        image_area = gray.shape[0] * gray.shape[1]
         cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
         for c in cnts:
+            contour_area = cv2.contourArea(c)
+            # Do not mistake the answer table or a registration mark for the
+            # page. A valid page outline is a large portrait rectangle.
+            if contour_area < image_area * 0.70:
+                continue
             peri = cv2.arcLength(c, True)
             approx = cv2.approxPolyDP(c, 0.02 * peri, True)
             if len(approx) == 4:
+                _, _, contour_width, contour_height = cv2.boundingRect(approx)
+                if contour_height / max(contour_width, 1) < 1.20:
+                    continue
                 docCnt = approx
                 break
 
     if docCnt is None:
-        warped_gray = gray
+        # A scan can be tightly cropped or have a very faint page border. The
+        # template-relative fallback still gives predictable geometry.
+        warped_gray = cv2.resize(gray, CANVAS_SIZE, interpolation=cv2.INTER_AREA)
+        print("DEBUG [Replit]: Page border not found; using full-frame calibration", file=sys.stderr)
     else:
         warped_gray = four_point_transform(gray, docCnt.reshape(4, 2))
 
-    # Detect all bubble contours using adaptive threshold
-    all_bubbles, thresh = get_contours_adaptive(warped_gray)
-
-    print(f"DEBUG [Replit]: Found {len(all_bubbles)} total bubbles", file=sys.stderr)
-
-    img_h, img_w = warped_gray.shape
-    bubble_data = []
-    for b in all_bubbles:
-        cx, cy = get_bubble_centroid(b)
-        bubble_data.append({"contour": b, "x": cx, "y": cy})
-
-    # Split into answer section (below roll area)
-    roll_threshold_y = img_h * 0.32
-    answer_bubbles_data = [b for b in bubble_data if b["y"] >= roll_threshold_y]
-
-    print(
-        f"DEBUG [Replit]: Answer section has {len(answer_bubbles_data)} bubbles (y >= {roll_threshold_y:.0f})",
-        file=sys.stderr,
+    # Read the six set bubbles and roll number with the same calibration. They
+    # are returned for diagnostics/evaluation while answer grading remains
+    # backward-compatible with the existing client.
+    set_labels = [f"SET {i}" for i in range(1, 7)]
+    set_result = read_calibrated_grid(
+        warped_gray,
+        [calibrated_point(x, y) for x, y in SET_POINTS],
+        set_labels,
     )
 
-    # Filter out any bubbles that are too far left (potential noise)
-    if len(answer_bubbles_data) > 0:
-        all_x = [b["x"] for b in answer_bubbles_data]
-        min_x_threshold = min(all_x) + (max(all_x) - min(all_x)) * 0.05
-        answer_bubbles_data = [
-            b for b in answer_bubbles_data if b["x"] >= min_x_threshold
-        ]
+    roll_digits = []
+    roll_confidence = []
+    for x in ROLL_X:
+        digit_result = read_calibrated_grid(
+            warped_gray,
+            [calibrated_point(x, y) for y in ROLL_Y],
+            [str(i) for i in range(10)],
+        )
+        roll_digits.append(digit_result[0])
+        roll_confidence.append(digit_result[1])
 
-    # ALWAYS split answer bubbles into left/right columns based on physical layout
-    mid_x = img_w * 0.50
-    left_answer_bubbles = [b for b in answer_bubbles_data if b["x"] < mid_x]
-    right_answer_bubbles = [b for b in answer_bubbles_data if b["x"] >= mid_x]
+    # The physical answer area is always two columns.  Limit the requested
+    # option count to the six choices printed on this template.
+    option_count = max(1, min(6, int(options_per_question)))
+    option_labels = ["A", "B", "C", "D", "E", "F"][:option_count]
+    left_x = ANSWER_X[:6][:option_count]
+    right_x = ANSWER_X[6:][:option_count]
+    left_q_count = min(5, (total_questions + 1) // 2)
+    right_q_count = min(5, max(0, total_questions - left_q_count))
 
-    print(
-        f"DEBUG [Replit]: Split into LEFT={len(left_answer_bubbles)} bubbles, RIGHT={len(right_answer_bubbles)} bubbles (mid_x={mid_x:.0f})",
-        file=sys.stderr,
-    )
-
-    # Determine question distribution
-    left_q_count = (total_questions + 1) // 2
-    right_q_count = total_questions - left_q_count
-
-    option_labels = ["A", "B", "C", "D", "E"][:options_per_question]
     detected_answers = []
     confidence_scores = []
 
-    def process_section(section_bubbles, q_count):
-        """Process a single column section and return answers."""
+    def process_answer_column(x_values, q_count):
         answers = []
         confs = []
+        for y in ANSWER_Y[:q_count]:
+            answer_result = read_calibrated_grid(
+                warped_gray,
+                [calibrated_point(x, y) for x in x_values],
+                option_labels,
+            )
+            answers.append(answer_result[0])
+            confs.append(answer_result[1])
+        return answers, confs
 
-        if len(section_bubbles) == 0:
-            for _ in range(q_count):
-                answers.append("")
-                confs.append(0.0)
-            return answers, confs
-
-        # Sort bubbles top-to-bottom
-        sorted_bubbles = imutils_contours.sort_contours(
-            section_bubbles, method="top-to-bottom"
-        )[0]
-
-        # Group into rows by Y-coordinate proximity
-        rows = []
-        current_row = [sorted_bubbles[0]]
-        for c in sorted_bubbles[1:]:
-            (_, by, _, _) = cv2.boundingRect(c)
-            (_, last_y, _, _) = cv2.boundingRect(current_row[-1])
-            if abs(by - last_y) < 10:
-                current_row.append(c)
-            else:
-                rows.append(current_row)
-                current_row = [c]
-        rows.append(current_row)
-
-        print(
-            f"DEBUG [Replit]: Section has {len(section_bubbles)} bubbles grouped into {len(rows)} rows",
-            file=sys.stderr,
-        )
-
-        # For each row, pick the darkest bubble
-        for row_idx, row in enumerate(rows):
-            if row_idx >= q_count:
-                break
-
-            # Sort left-to-right within row
-            row = imutils_contours.sort_contours(row, method="left-to-right")[0]
-
-            # Filter to expected number of options: take the N largest by area
-            if len(row) > options_per_question:
-                row = sorted(row, key=cv2.contourArea, reverse=True)[
-                    :options_per_question
-                ]
-
-            # Always re-sort left-to-right after filtering
-            row = imutils_contours.sort_contours(row, method="left-to-right")[0]
-
-            if len(row) < 2:
-                answers.append("")
-                confs.append(0.0)
-                continue
-
-            # Count filled pixels in each bubble
-            pixels = []
-            for c in row:
-                mask = np.zeros(thresh.shape, dtype="uint8")
-                cv2.drawContours(mask, [c], -1, 255, -1)
-                masked = cv2.bitwise_and(thresh, thresh, mask=mask)
-                pixels.append(cv2.countNonZero(masked))
-
-            if max(pixels) == 0:
-                answers.append("")
-                confs.append(0.0)
-                continue
-
-            best_idx = int(np.argmax(pixels))
-            best_pixels = pixels[best_idx]
-            total_pixels = sum(pixels)
-
-            conf = best_pixels / max(total_pixels, 1) if total_pixels > 0 else 0.0
-
-            # Winner must have at least 20 pixels filled and be at least 10% above average
-            if best_pixels > 20:
-                avg_pixels = total_pixels / len(pixels)
-                if best_pixels > avg_pixels * 1.1:
-                    if best_idx < len(option_labels):
-                        answers.append(option_labels[best_idx])
-                        confs.append(min(1.0, conf))
-                    else:
-                        answers.append("")
-                        confs.append(0.0)
-                else:
-                    answers.append("")
-                    confs.append(0.0)
-            else:
-                answers.append("")
-                confs.append(0.0)
-
-        # Pad if fewer rows detected than expected
-        while len(answers) < q_count:
-            answers.append("")
-            confs.append(0.0)
-
-        return answers[:q_count], confs[:q_count]
-
-    # Process left and right columns separately (physical sheet layout)
-    left_contours = [b["contour"] for b in left_answer_bubbles]
-    right_contours = [b["contour"] for b in right_answer_bubbles]
-
-    left_answers, left_conf = process_section(left_contours, left_q_count)
-    right_answers, right_conf = process_section(right_contours, right_q_count)
+    left_answers, left_conf = process_answer_column(
+        [x / 1020.0 for x in (178, 236, 294, 352, 410, 468)][:option_count],
+        left_q_count,
+    )
+    right_answers, right_conf = process_answer_column(
+        [x / 1020.0 for x in (616, 674, 734, 792, 850, 908)][:option_count],
+        right_q_count,
+    )
 
     detected_answers = left_answers + right_answers
     confidence_scores = left_conf + right_conf
+    while len(detected_answers) < total_questions:
+        detected_answers.append("")
+        confidence_scores.append(0.0)
+
+    print(
+        f"DEBUG [Replit]: calibrated template; set={set_result[0] or 'blank'} "
+        f"roll={''.join(roll_digits) or 'blank'} answers={len(detected_answers)}",
+        file=sys.stderr,
+    )
 
     return {
-        "detectedAnswers": detected_answers,
-        "confidence": confidence_scores,
+        "detectedAnswers": detected_answers[:total_questions],
+        "confidence": confidence_scores[:total_questions],
+        "detectedSet": set_result[0],
+        "detectedRollNumber": "".join(roll_digits),
+        "rollConfidence": roll_confidence,
     }
 
 
