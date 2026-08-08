@@ -55,6 +55,9 @@ export async function processOMRImage(
           resolve({
             detectedAnswers: parsed.detectedAnswers || [],
             confidence: parsed.confidence || [],
+            detectedSet: parsed.detectedSet || "",
+            detectedRollNumber: parsed.detectedRollNumber || "",
+            rollConfidence: parsed.rollConfidence || [],
           });
         } catch (e) {
           reject(new Error(`Failed to parse OMR output: ${stdout.slice(0, 200)}`));

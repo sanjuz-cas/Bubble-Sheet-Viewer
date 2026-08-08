@@ -97,6 +97,8 @@ export default function ScanScreen() {
 
       const data = await res.json();
       const detectedAnswers: string[] = data.detectedAnswers;
+      const detectedSet: string = data.detectedSet || '';
+      const detectedRollNumber: string = data.detectedRollNumber || '';
 
       const questionResults: QuestionResult[] = selectedKey.answers.map((correct, i) => ({
         questionNumber: i + 1,
@@ -121,6 +123,8 @@ export default function ScanScreen() {
         questionResults,
         scannedAt: new Date().toISOString(),
         imageUri,
+        detectedSet,
+        detectedRollNumber,
       };
 
       await saveScanResult(scanResult);

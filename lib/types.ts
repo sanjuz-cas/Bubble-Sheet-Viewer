@@ -21,6 +21,8 @@ export interface ScanResult {
   questionResults: QuestionResult[];
   scannedAt: string;
   imageUri?: string;
+  detectedSet?: string;
+  detectedRollNumber?: string;
 }
 
 export interface QuestionResult {

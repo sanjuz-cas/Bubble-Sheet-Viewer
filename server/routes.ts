@@ -188,6 +188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const {
       id, answerKeyId, answerKeyName, subject, score, totalQuestions,
       percentage, detectedAnswers, correctAnswers, questionResults, imageUri,
+      detectedSet, detectedRollNumber,
     } = req.body;
     if (!id) return res.status(400).json({ error: "Missing id" });
 
@@ -196,7 +197,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     if (!existing) {
       const dataEncrypted = encrypt(
-        JSON.stringify({ detectedAnswers, correctAnswers, questionResults, imageUri })
+        JSON.stringify({
+          detectedAnswers,
+          correctAnswers,
+          questionResults,
+          imageUri,
+          detectedSet,
+          detectedRollNumber,
+        })
       );
       await db.insert(scanResults).values({
         id, userId, answerKeyId, answerKeyName, subject,
@@ -244,6 +252,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     summary.addRows([
       { field: "Exam Name", value: row.answerKeyName },
       { field: "Subject", value: row.subject },
+      { field: "Roll Number", value: data.detectedRollNumber || "Not detected" },
+      { field: "Set", value: data.detectedSet || "Not detected" },
       { field: "Score", value: `${row.score} / ${row.totalQuestions}` },
       { field: "Percentage", value: `${Math.round(row.percentage)}%` },
       { field: "Grade", value: gradeLabel(row.percentage) },

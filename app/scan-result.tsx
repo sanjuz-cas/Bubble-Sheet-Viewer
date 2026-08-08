@@ -125,6 +125,28 @@ export default function ScanResultScreen() {
           </View>
         </LinearGradient>
 
+        <View style={styles.identityCard}>
+          <View style={styles.identityItem}>
+            <Ionicons name="person-circle-outline" size={22} color={C.primary} />
+            <View>
+              <Text style={styles.identityLabel}>Roll Number</Text>
+              <Text style={styles.identityValue}>
+                {result.detectedRollNumber || 'Not detected'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.identityDivider} />
+          <View style={styles.identityItem}>
+            <Ionicons name="layers-outline" size={22} color={C.secondary} />
+            <View>
+              <Text style={styles.identityLabel}>Set</Text>
+              <Text style={styles.identityValue}>
+                {result.detectedSet || 'Not detected'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
         <View style={styles.statsRow}>
           <View style={[styles.statBox, { backgroundColor: '#0F2210' }]}>
             <Ionicons name="checkmark-circle" size={20} color={C.success} />
@@ -263,6 +285,39 @@ const styles = StyleSheet.create({
     fontFamily: 'Nunito_500Medium',
     fontSize: 12,
     color: 'rgba(255,255,255,0.7)',
+  },
+  identityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.cardBorder,
+    padding: 16,
+    marginBottom: 20,
+  },
+  identityItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  identityDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: C.cardBorder,
+    marginHorizontal: 12,
+  },
+  identityLabel: {
+    fontFamily: 'Nunito_500Medium',
+    fontSize: 11,
+    color: C.textSecondary,
+  },
+  identityValue: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 15,
+    color: C.text,
+    marginTop: 2,
   },
   statsRow: {
     flexDirection: 'row',
