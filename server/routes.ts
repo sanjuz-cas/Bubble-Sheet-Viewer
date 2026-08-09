@@ -120,14 +120,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(rows.map((r) => {
       const stored = JSON.parse(decrypt(r.answersEncrypted));
       const isLegacyAnswers = Array.isArray(stored);
+      const normalizeAnswers = (values: unknown): string[][] =>
+        Array.isArray(values)
+          ? values.map((value) => Array.isArray(value) ? value.filter(Boolean) : value ? [String(value)] : [])
+          : [];
       return {
         id: r.id,
         name: r.name,
         subject: r.subject,
         totalQuestions: r.totalQuestions,
         optionsPerQuestion: r.optionsPerQuestion,
-        answers: isLegacyAnswers ? stored : (stored.answers || []),
-        ...(isLegacyAnswers || !stored.setAnswers ? {} : { setAnswers: stored.setAnswers }),
+        answers: normalizeAnswers(isLegacyAnswers ? stored : (stored.answers || [])),
+        ...(isLegacyAnswers || !stored.setAnswers
+          ? {}
+          : { setAnswers: Object.fromEntries(
+              Object.entries(stored.setAnswers).map(([setName, values]) => [
+                setName,
+                normalizeAnswers(values),
+              ])
+            ) }),
         createdAt: r.createdAt.toISOString(),
       };
     }));
@@ -283,16 +294,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     for (const q of (data.questionResults || [])) {
       const isBlank = !q.selected;
       const statusText = q.isCorrect ? "✓ Correct" : isBlank ? "— Blank" : "✗ Wrong";
+      const correctText = Array.isArray(q.correct) ? q.correct.join(" or ") : q.correct;
       const notes = q.isCorrect
-        ? `Correctly marked option ${q.correct}`
+        ? `Correctly marked option ${correctText}`
         : isBlank
-          ? `No answer — correct option is ${q.correct}`
-          : `Marked option ${q.selected} — correct option is ${q.correct}`;
+          ? `No answer — correct option is ${correctText}`
+          : `Marked option ${q.selected} — correct option is ${correctText}`;
 
       const r2 = details.addRow({
         q:       `Q${q.questionNumber}`,
         student: q.selected || "No answer",
-        correct: q.correct,
+        correct: correctText,
         status:  statusText,
         notes,
       });
@@ -326,7 +338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.file) return res.status(400).json({ error: "No image provided" });
       const totalQuestions = parseInt(req.body.totalQuestions || "30");
       const optionsPerQuestion = parseInt(req.body.optionsPerQuestion || "4");
-      const correctAnswers: string[] = JSON.parse(req.body.correctAnswers || "[]");
+      const correctAnswers: string[][] = JSON.parse(req.body.correctAnswers || "[]");
       const result = await processOMRImage(
         req.file.buffer, totalQuestions, optionsPerQuestion, correctAnswers
       );

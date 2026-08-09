@@ -15,7 +15,7 @@ export async function processOMRImage(
   imageBuffer: Buffer,
   totalQuestions: number,
   optionsPerQuestion: number,
-  correctAnswers: string[]
+  correctAnswers: string[][]
 ): Promise<OMRResult> {
   const tmpPath = join(tmpdir(), `bubblescan_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`);
 

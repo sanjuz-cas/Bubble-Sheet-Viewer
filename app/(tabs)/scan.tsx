@@ -114,7 +114,7 @@ export default function ScanScreen() {
         questionNumber: i + 1,
         selected: detectedAnswers[i] || '',
         correct,
-        isCorrect: detectedAnswers[i] === correct,
+        isCorrect: !!detectedAnswers[i] && correct.includes(detectedAnswers[i]),
       }));
 
       const score = questionResults.filter(q => q.isCorrect).length;

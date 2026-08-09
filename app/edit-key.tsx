@@ -15,6 +15,7 @@ const C = Colors.light;
 
 const SUBJECTS = ['Math', 'Science', 'English', 'History', 'Geography', 'Physics', 'Chemistry', 'Biology', 'Other'];
 const SETS = ['SET 1', 'SET 2', 'SET 3', 'SET 4', 'SET 5', 'SET 6'];
+type AnswerOptions = string[];
 
 export default function EditKeyScreen() {
   const insets = useSafeAreaInsets();
@@ -25,10 +26,10 @@ export default function EditKeyScreen() {
   const [subject, setSubject] = useState('Math');
   const [totalQuestions, setTotalQuestions] = useState('30');
   const [optionsCount, setOptionsCount] = useState(6);
-  const [answers, setAnswers] = useState<string[]>([]);
+  const [answers, setAnswers] = useState<AnswerOptions[]>([]);
   const [multiSet, setMultiSet] = useState(false);
   const [activeSet, setActiveSet] = useState('SET 1');
-  const [answersBySet, setAnswersBySet] = useState<Record<string, string[]>>({});
+  const [answersBySet, setAnswersBySet] = useState<Record<string, AnswerOptions[]>>({});
 
   useEffect(() => {
     if (keyId) {
@@ -39,7 +40,7 @@ export default function EditKeyScreen() {
           setSubject(k.subject);
           setTotalQuestions(String(k.totalQuestions));
           setOptionsCount(k.optionsPerQuestion);
-          setAnswers(k.answers);
+           setAnswers(k.answers.map(answer => Array.isArray(answer) ? answer : [answer]));
            if (k.setAnswers) {
              setMultiSet(true);
              setAnswersBySet(k.setAnswers);
@@ -51,15 +52,15 @@ export default function EditKeyScreen() {
 
   const qCount = parseInt(totalQuestions) || 0;
   const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, optionsCount);
-  const visibleAnswers = multiSet
+   const visibleAnswers = multiSet
     ? (answersBySet[activeSet] || answers)
     : answers;
 
   useEffect(() => {
     if (qCount <= 0) return;
-    const normalize = (current: string[]) => {
-      const arr = [...current];
-      while (arr.length < qCount) arr.push('A');
+    const normalize = (current: AnswerOptions[]) => {
+      const arr = current.map(options => options.length ? options : ['A']);
+      while (arr.length < qCount) arr.push(['A']);
       return arr.slice(0, qCount);
     };
     if (multiSet) {
@@ -99,7 +100,7 @@ export default function EditKeyScreen() {
     const normalizedSetAnswers = multiSet
       ? Object.fromEntries(SETS.map(setName => [
         setName,
-        (answersBySet[setName] || answers).slice(0, qCount),
+         (answersBySet[setName] || answers).slice(0, qCount),
       ]))
       : undefined;
     const key: AnswerKey = {
@@ -246,30 +247,40 @@ export default function EditKeyScreen() {
                 ))}
               </View>
             ) : null}
-            <Text style={styles.helperText}>Tap to cycle through options for each question</Text>
+            <Text style={styles.helperText}>Select one or more accepted choices for each question</Text>
             <View style={styles.answerGrid}>
-              {visibleAnswers.slice(0, qCount).map((ans, i) => (
-                <Pressable
-                  key={i}
-                  style={styles.answerItem}
-                  onPress={() => {
-                    const currentIdx = optionLabels.indexOf(ans);
-                    const nextIdx = (currentIdx + 1) % optionLabels.length;
-                    const newAnswers = [...visibleAnswers];
-                    newAnswers[i] = optionLabels[nextIdx];
-                    if (multiSet) {
-                      setAnswersBySet(prev => ({ ...prev, [activeSet]: newAnswers }));
-                    } else {
-                      setAnswers(newAnswers);
-                    }
-                    Haptics.selectionAsync();
-                  }}
-                >
+              {visibleAnswers.slice(0, qCount).map((accepted, i) => (
+                <View key={i} style={styles.answerItem}>
                   <Text style={styles.answerNum}>{i + 1}</Text>
-                  <View style={styles.answerBubble}>
-                    <Text style={styles.answerBubbleText}>{ans}</Text>
+                  <View style={styles.choiceRow}>
+                    {optionLabels.map(option => {
+                      const selected = accepted.includes(option);
+                      return (
+                        <Pressable
+                          key={option}
+                          style={[styles.choiceButton, selected && styles.choiceButtonActive]}
+                          onPress={() => {
+                            const nextAccepted = selected
+                              ? accepted.filter(value => value !== option)
+                              : [...accepted, option];
+                            const newAnswers = [...visibleAnswers];
+                            newAnswers[i] = nextAccepted;
+                            if (multiSet) {
+                              setAnswersBySet(prev => ({ ...prev, [activeSet]: newAnswers }));
+                            } else {
+                              setAnswers(newAnswers);
+                            }
+                            Haptics.selectionAsync();
+                          }}
+                        >
+                          <Text style={[styles.choiceText, selected && styles.choiceTextActive]}>
+                            {option}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
-                </Pressable>
+                </View>
               ))}
             </View>
           </View>
@@ -432,9 +443,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   answerItem: {
-    width: 58,
-    alignItems: 'center',
-    gap: 4,
+    width: '100%',
+    gap: 8,
     paddingVertical: 8,
     backgroundColor: C.card,
     borderRadius: 14,
@@ -459,4 +469,29 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: C.white,
   },
+  choiceRow: {
+    flexDirection: 'row',
+    gap: 7,
+    flexWrap: 'wrap',
+  },
+  choiceButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.background,
+    borderWidth: 1,
+    borderColor: C.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  choiceButtonActive: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
+  },
+  choiceText: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 13,
+    color: C.textSecondary,
+  },
+  choiceTextActive: { color: C.white },
 });

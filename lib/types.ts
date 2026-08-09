@@ -4,8 +4,9 @@ export interface AnswerKey {
   subject: string;
   totalQuestions: number;
   optionsPerQuestion: number;
-  answers: string[];
-  setAnswers?: Record<string, string[]>;
+  /** Accepted option labels for each question, e.g. [["A", "C"], ["B"]]. */
+  answers: string[][];
+  setAnswers?: Record<string, string[][]>;
   createdAt: string;
 }
 
@@ -15,7 +16,7 @@ export interface ScanResult {
   answerKeyName: string;
   subject: string;
   detectedAnswers: string[];
-  correctAnswers: string[];
+  correctAnswers: string[][];
   score: number;
   totalQuestions: number;
   percentage: number;
@@ -29,7 +30,7 @@ export interface ScanResult {
 export interface QuestionResult {
   questionNumber: number;
   selected: string;
-  correct: string;
+  correct: string[];
   isCorrect: boolean;
 }
 

@@ -17,6 +17,10 @@ import Colors from '@/constants/colors';
 
 const C = Colors.light;
 
+function formatCorrectAnswer(correct: string[] | string): string {
+  return Array.isArray(correct) ? correct.join(' or ') : correct;
+}
+
 export default function ScanResultScreen() {
   const insets = useSafeAreaInsets();
   const { resultId } = useLocalSearchParams<{ resultId: string }>();
@@ -202,7 +206,7 @@ export default function ScanResultScreen() {
                   </View>
                   {!q.isCorrect ? (
                     <View style={[styles.detailBubble, { backgroundColor: C.success }]}>
-                      <Text style={styles.detailBubbleText}>{q.correct}</Text>
+                      <Text style={styles.detailBubbleText}>{formatCorrectAnswer(q.correct)}</Text>
                     </View>
                   ) : null}
                 </View>
