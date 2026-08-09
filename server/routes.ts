@@ -117,24 +117,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       where: eq(answerKeys.userId, userId),
       orderBy: (t, { desc }) => [desc(t.createdAt)],
     });
-    res.json(rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      subject: r.subject,
-      totalQuestions: r.totalQuestions,
-      optionsPerQuestion: r.optionsPerQuestion,
-      answers: JSON.parse(decrypt(r.answersEncrypted)),
-      createdAt: r.createdAt.toISOString(),
-    })));
+    res.json(rows.map((r) => {
+      const stored = JSON.parse(decrypt(r.answersEncrypted));
+      const isLegacyAnswers = Array.isArray(stored);
+      return {
+        id: r.id,
+        name: r.name,
+        subject: r.subject,
+        totalQuestions: r.totalQuestions,
+        optionsPerQuestion: r.optionsPerQuestion,
+        answers: isLegacyAnswers ? stored : (stored.answers || []),
+        ...(isLegacyAnswers || !stored.setAnswers ? {} : { setAnswers: stored.setAnswers }),
+        createdAt: r.createdAt.toISOString(),
+      };
+    }));
   });
 
   app.post("/api/keys", requireAuth, async (req: Request, res: Response) => {
     const userId = (req as any).userId;
-    const { id, name, subject, totalQuestions, optionsPerQuestion, answers } = req.body;
+    const {
+      id, name, subject, totalQuestions, optionsPerQuestion, answers, setAnswers,
+    } = req.body;
     if (!id || !name || !answers) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-    const answersEncrypted = encrypt(JSON.stringify(answers));
+    const answersEncrypted = encrypt(JSON.stringify({ answers, setAnswers }));
     const existing = await db.query.answerKeys.findFirst({
       where: and(eq(answerKeys.id, id), eq(answerKeys.userId, userId)),
     });

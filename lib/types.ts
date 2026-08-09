@@ -5,6 +5,7 @@ export interface AnswerKey {
   totalQuestions: number;
   optionsPerQuestion: number;
   answers: string[];
+  setAnswers?: Record<string, string[]>;
   createdAt: string;
 }
 

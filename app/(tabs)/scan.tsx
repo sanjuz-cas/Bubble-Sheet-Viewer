@@ -102,8 +102,15 @@ export default function ScanScreen() {
       const detectedAnswers: string[] = data.detectedAnswers;
       const detectedSet: string = data.detectedSet || '';
       const detectedRollNumber: string = data.detectedRollNumber || '';
+      const gradingAnswers = answerKey.setAnswers?.[detectedSet] || answerKey.answers;
 
-      const questionResults: QuestionResult[] = answerKey.answers.map((correct, i) => ({
+      if (answerKey.setAnswers && !answerKey.setAnswers[detectedSet]) {
+        throw new Error(
+          `${detectedSet || 'A set'} has no answer key configured. Complete all six set tabs first.`
+        );
+      }
+
+      const questionResults: QuestionResult[] = gradingAnswers.map((correct, i) => ({
         questionNumber: i + 1,
         selected: detectedAnswers[i] || '',
         correct,
@@ -119,7 +126,7 @@ export default function ScanScreen() {
         answerKeyName: answerKey.name,
         subject: answerKey.subject,
         detectedAnswers,
-        correctAnswers: answerKey.answers,
+        correctAnswers: gradingAnswers,
         score,
         totalQuestions: answerKey.totalQuestions,
         percentage,

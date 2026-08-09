@@ -14,6 +14,7 @@ import Colors from '@/constants/colors';
 const C = Colors.light;
 
 const SUBJECTS = ['Math', 'Science', 'English', 'History', 'Geography', 'Physics', 'Chemistry', 'Biology', 'Other'];
+const SETS = ['SET 1', 'SET 2', 'SET 3', 'SET 4', 'SET 5', 'SET 6'];
 
 export default function EditKeyScreen() {
   const insets = useSafeAreaInsets();
@@ -25,6 +26,9 @@ export default function EditKeyScreen() {
   const [totalQuestions, setTotalQuestions] = useState('30');
   const [optionsCount, setOptionsCount] = useState(6);
   const [answers, setAnswers] = useState<string[]>([]);
+  const [multiSet, setMultiSet] = useState(false);
+  const [activeSet, setActiveSet] = useState('SET 1');
+  const [answersBySet, setAnswersBySet] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     if (keyId) {
@@ -36,6 +40,10 @@ export default function EditKeyScreen() {
           setTotalQuestions(String(k.totalQuestions));
           setOptionsCount(k.optionsPerQuestion);
           setAnswers(k.answers);
+           if (k.setAnswers) {
+             setMultiSet(true);
+             setAnswersBySet(k.setAnswers);
+           }
         }
       });
     }
@@ -43,16 +51,40 @@ export default function EditKeyScreen() {
 
   const qCount = parseInt(totalQuestions) || 0;
   const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, optionsCount);
+  const visibleAnswers = multiSet
+    ? (answersBySet[activeSet] || answers)
+    : answers;
 
   useEffect(() => {
-    if (qCount > 0 && answers.length !== qCount) {
-      setAnswers(prev => {
-        const arr = [...prev];
-        while (arr.length < qCount) arr.push('A');
-        return arr.slice(0, qCount);
+    if (qCount <= 0) return;
+    const normalize = (current: string[]) => {
+      const arr = [...current];
+      while (arr.length < qCount) arr.push('A');
+      return arr.slice(0, qCount);
+    };
+    if (multiSet) {
+      setAnswersBySet(prev => {
+        const next = { ...prev };
+        SETS.forEach(setName => {
+          next[setName] = normalize(next[setName] || answers);
+        });
+        return next;
       });
+    } else if (answers.length !== qCount) {
+      setAnswers(prev => normalize(prev));
     }
-  }, [qCount]);
+  }, [qCount, multiSet]);
+
+  const enableMultiSet = () => {
+    setAnswersBySet(prev => {
+      const next = { ...prev };
+      SETS.forEach(setName => {
+        next[setName] = [...(next[setName] || answers)];
+      });
+      return next;
+    });
+    setMultiSet(true);
+  };
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -64,13 +96,20 @@ export default function EditKeyScreen() {
       return;
     }
 
+    const normalizedSetAnswers = multiSet
+      ? Object.fromEntries(SETS.map(setName => [
+        setName,
+        (answersBySet[setName] || answers).slice(0, qCount),
+      ]))
+      : undefined;
     const key: AnswerKey = {
       id: keyId || Crypto.randomUUID(),
       name: name.trim(),
       subject,
       totalQuestions: qCount,
       optionsPerQuestion: optionsCount,
-      answers: answers.slice(0, qCount),
+      answers: (multiSet ? normalizedSetAnswers?.['SET 1'] : answers)?.slice(0, qCount) || [],
+      ...(normalizedSetAnswers ? { setAnswers: normalizedSetAnswers } : {}),
       createdAt: new Date().toISOString(),
     };
 
@@ -159,21 +198,70 @@ export default function EditKeyScreen() {
           </View>
         </View>
 
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Answer Key Type</Text>
+          <View style={styles.modeRow}>
+            <Pressable
+              style={[styles.modeButton, !multiSet && styles.modeButtonActive]}
+              onPress={() => setMultiSet(false)}
+            >
+              <Text style={[styles.modeButtonText, !multiSet && styles.modeButtonTextActive]}>
+                One set
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.modeButton, multiSet && styles.modeButtonActive]}
+              onPress={enableMultiSet}
+            >
+              <Text style={[styles.modeButtonText, multiSet && styles.modeButtonTextActive]}>
+                Six sets
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.helperText}>
+            {multiSet
+              ? 'Each scanned sheet is graded using the answer key for its detected set.'
+              : 'Use this for a sheet with one answer pattern.'}
+          </Text>
+        </View>
+
         {qCount > 0 ? (
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Answer Key</Text>
+            <View style={styles.answerHeader}>
+              <Text style={styles.label}>Answer Key</Text>
+              {multiSet ? <Text style={styles.activeSetLabel}>{activeSet}</Text> : null}
+            </View>
+            {multiSet ? (
+              <View style={styles.setTabs}>
+                {SETS.map(setName => (
+                  <Pressable
+                    key={setName}
+                    style={[styles.setTab, activeSet === setName && styles.setTabActive]}
+                    onPress={() => setActiveSet(setName)}
+                  >
+                    <Text style={[styles.setTabText, activeSet === setName && styles.setTabTextActive]}>
+                      {setName.replace('SET ', 'S')}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
             <Text style={styles.helperText}>Tap to cycle through options for each question</Text>
             <View style={styles.answerGrid}>
-              {answers.slice(0, qCount).map((ans, i) => (
+              {visibleAnswers.slice(0, qCount).map((ans, i) => (
                 <Pressable
                   key={i}
                   style={styles.answerItem}
                   onPress={() => {
                     const currentIdx = optionLabels.indexOf(ans);
                     const nextIdx = (currentIdx + 1) % optionLabels.length;
-                    const newAnswers = [...answers];
+                    const newAnswers = [...visibleAnswers];
                     newAnswers[i] = optionLabels[nextIdx];
-                    setAnswers(newAnswers);
+                    if (multiSet) {
+                      setAnswersBySet(prev => ({ ...prev, [activeSet]: newAnswers }));
+                    } else {
+                      setAnswers(newAnswers);
+                    }
                     Haptics.selectionAsync();
                   }}
                 >
@@ -257,6 +345,64 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 14,
   },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modeButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: C.card,
+    borderWidth: 1.5,
+    borderColor: C.cardBorder,
+  },
+  modeButtonActive: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
+  },
+  modeButtonText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: C.text,
+  },
+  modeButtonTextActive: { color: C.white },
+  answerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  activeSetLabel: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: C.primary,
+    marginBottom: 8,
+  },
+  setTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  setTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.cardBorder,
+  },
+  setTabActive: {
+    backgroundColor: C.secondary,
+    borderColor: C.secondary,
+  },
+  setTabText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: C.text,
+  },
+  setTabTextActive: { color: C.white },
   optionSelector: {
     flexDirection: 'row',
     gap: 8,
