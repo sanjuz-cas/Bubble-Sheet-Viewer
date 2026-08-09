@@ -22,8 +22,10 @@ export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const [keys, setKeys] = useState<AnswerKey[]>([]);
   const [selectedKey, setSelectedKey] = useState<AnswerKey | null>(null);
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageUris, setImageUris] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [processingIndex, setProcessingIndex] = useState(0);
+  const [batchSummary, setBatchSummary] = useState<{ completed: number; failed: number } | null>(null);
 
   useFocusEffect(useCallback(() => {
     getAnswerKeys().then(k => {
@@ -50,11 +52,17 @@ export default function ScanScreen() {
           quality: 0.8,
           allowsEditing: false,
           mediaTypes: ['images'],
+          allowsMultipleSelection: true,
+          selectionLimit: 100,
         });
       }
 
-      if (!result.canceled && result.assets[0]) {
-        setImageUri(result.assets[0].uri);
+      if (!result.canceled && result.assets.length > 0) {
+        setImageUris(prev => {
+          const next = [...prev, ...result.assets.map(asset => asset.uri)];
+          return Array.from(new Set(next)).slice(0, 100);
+        });
+        setBatchSummary(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     } catch (e) {
@@ -62,12 +70,7 @@ export default function ScanScreen() {
     }
   };
 
-  const processImage = async () => {
-    if (!imageUri || !selectedKey) return;
-    setProcessing(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    try {
+  const processSingleImage = async (imageUri: string, answerKey: AnswerKey): Promise<ScanResult> => {
       const formData = new FormData();
 
       const uriParts = imageUri.split('.');
@@ -78,9 +81,9 @@ export default function ScanScreen() {
         type: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
       } as any);
 
-      formData.append('totalQuestions', String(selectedKey.totalQuestions));
-      formData.append('optionsPerQuestion', String(selectedKey.optionsPerQuestion));
-      formData.append('correctAnswers', JSON.stringify(selectedKey.answers));
+      formData.append('totalQuestions', String(answerKey.totalQuestions));
+      formData.append('optionsPerQuestion', String(answerKey.optionsPerQuestion));
+      formData.append('correctAnswers', JSON.stringify(answerKey.answers));
 
       const baseUrl = getApiUrl();
       const token = getAuthToken();
@@ -100,7 +103,7 @@ export default function ScanScreen() {
       const detectedSet: string = data.detectedSet || '';
       const detectedRollNumber: string = data.detectedRollNumber || '';
 
-      const questionResults: QuestionResult[] = selectedKey.answers.map((correct, i) => ({
+      const questionResults: QuestionResult[] = answerKey.answers.map((correct, i) => ({
         questionNumber: i + 1,
         selected: detectedAnswers[i] || '',
         correct,
@@ -108,17 +111,17 @@ export default function ScanScreen() {
       }));
 
       const score = questionResults.filter(q => q.isCorrect).length;
-      const percentage = (score / selectedKey.totalQuestions) * 100;
+      const percentage = (score / answerKey.totalQuestions) * 100;
 
-      const scanResult: ScanResult = {
+      return {
         id: Crypto.randomUUID(),
-        answerKeyId: selectedKey.id,
-        answerKeyName: selectedKey.name,
-        subject: selectedKey.subject,
+        answerKeyId: answerKey.id,
+        answerKeyName: answerKey.name,
+        subject: answerKey.subject,
         detectedAnswers,
-        correctAnswers: selectedKey.answers,
+        correctAnswers: answerKey.answers,
         score,
-        totalQuestions: selectedKey.totalQuestions,
+        totalQuestions: answerKey.totalQuestions,
         percentage,
         questionResults,
         scannedAt: new Date().toISOString(),
@@ -126,17 +129,46 @@ export default function ScanScreen() {
         detectedSet,
         detectedRollNumber,
       };
+  };
 
-      await saveScanResult(scanResult);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const processImages = async () => {
+    if (imageUris.length === 0 || !selectedKey || processing) return;
+    const imagesToProcess = imageUris.slice(0, 100);
+    const answerKey = selectedKey;
+    setProcessing(true);
+    setBatchSummary(null);
+    setProcessingIndex(0);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      setImageUri(null);
-      router.push({ pathname: '/scan-result', params: { resultId: scanResult.id } });
-    } catch (err: any) {
-      console.error(err);
-      Alert.alert('Scan Error', err.message || 'Something went wrong during scanning.');
-    } finally {
-      setProcessing(false);
+    let completed = 0;
+    let failed = 0;
+    let firstResult: ScanResult | null = null;
+
+    for (let i = 0; i < imagesToProcess.length; i += 1) {
+      setProcessingIndex(i + 1);
+      try {
+        const result = await processSingleImage(imagesToProcess[i], answerKey);
+        await saveScanResult(result);
+        if (!firstResult) firstResult = result;
+        completed += 1;
+      } catch (err) {
+        failed += 1;
+        console.error(`OMR batch item ${i + 1} failed`, err);
+      }
+    }
+
+    setProcessing(false);
+    setProcessingIndex(0);
+    setImageUris([]);
+    setBatchSummary({ completed, failed });
+    Haptics.notificationAsync(
+      failed === 0
+        ? Haptics.NotificationFeedbackType.Success
+        : Haptics.NotificationFeedbackType.Warning
+    );
+
+    if (imagesToProcess.length === 1 && firstResult) {
+      router.push({ pathname: '/scan-result', params: { resultId: firstResult.id } });
     }
   };
 
@@ -196,13 +228,32 @@ export default function ScanScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Capture Image</Text>
-          {imageUri ? (
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Capture Images</Text>
+            {imageUris.length > 0 ? (
+              <Pressable onPress={() => {
+                if (!processing) {
+                  setImageUris([]);
+                  setBatchSummary(null);
+                }
+              }} disabled={processing}>
+                <Text style={styles.clearText}>Clear</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {imageUris.length > 0 ? (
             <View style={styles.previewContainer}>
-              <Image source={{ uri: imageUri }} style={styles.previewImage} contentFit="contain" />
+              <Image source={{ uri: imageUris[0] }} style={styles.previewImage} contentFit="contain" />
+              <View style={styles.imageCountBadge}>
+                <Ionicons name="images-outline" size={16} color={C.white} />
+                <Text style={styles.imageCountText}>
+                  {imageUris.length} {imageUris.length === 1 ? 'sheet' : 'sheets'} selected
+                </Text>
+              </View>
               <Pressable
                 style={styles.removeImageBtn}
-                onPress={() => setImageUri(null)}
+                onPress={() => setImageUris(prev => prev.slice(1))}
+                disabled={processing}
               >
                 <Ionicons name="close-circle" size={32} color={C.error} />
               </Pressable>
@@ -230,35 +281,59 @@ export default function ScanScreen() {
                   style={styles.captureBtnGradient}
                 >
                   <Ionicons name="images" size={36} color={C.white} />
-                  <Text style={styles.captureBtnText}>Gallery</Text>
+                  <Text style={styles.captureBtnText}>Gallery (up to 100)</Text>
                 </LinearGradient>
               </Pressable>
             </View>
           )}
         </View>
 
-        {selectedKey && imageUri ? (
+        {selectedKey && imageUris.length > 0 ? (
           <Pressable
             style={({ pressed }) => [
               styles.scanButton,
               pressed && styles.pressed,
               processing && styles.scanButtonDisabled,
             ]}
-            onPress={processImage}
+            onPress={processImages}
             disabled={processing}
           >
             {processing ? (
               <View style={styles.processingRow}>
                 <ActivityIndicator color={C.white} />
-                <Text style={styles.scanButtonText}>Processing...</Text>
+                <Text style={styles.scanButtonText}>
+                  Processing {processingIndex} of {imageUris.length}...
+                </Text>
               </View>
             ) : (
               <View style={styles.processingRow}>
                 <Ionicons name="scan" size={22} color={C.white} />
-                <Text style={styles.scanButtonText}>Scan & Grade</Text>
+                <Text style={styles.scanButtonText}>
+                  {imageUris.length > 1 ? `Process ${imageUris.length} Sheets` : 'Scan & Grade'}
+                </Text>
               </View>
             )}
           </Pressable>
+        ) : null}
+
+        {batchSummary ? (
+          <View style={styles.batchSummaryCard}>
+            <Ionicons
+              name={batchSummary.failed === 0 ? 'checkmark-circle' : 'alert-circle'}
+              size={24}
+              color={batchSummary.failed === 0 ? C.success : C.warning}
+            />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoTitle}>Batch processing complete</Text>
+              <Text style={styles.infoText}>
+                {batchSummary.completed} saved
+                {batchSummary.failed > 0 ? ` · ${batchSummary.failed} failed` : ''}
+              </Text>
+            </View>
+            <Pressable onPress={() => router.push('/(tabs)/history')}>
+              <Text style={styles.viewHistoryText}>View history</Text>
+            </Pressable>
+          </View>
         ) : null}
 
         {selectedKey ? (
@@ -293,11 +368,22 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   section: { marginBottom: 24 },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontFamily: 'Nunito_700Bold',
     fontSize: 16,
     color: C.text,
-    marginBottom: 12,
+    marginBottom: 0,
+  },
+  clearText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: C.error,
   },
   keyList: { gap: 10 },
   keyChip: {
@@ -375,6 +461,23 @@ const styles = StyleSheet.create({
     top: 10,
     right: 10,
   },
+  imageCountBadge: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15, 17, 24, 0.82)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  imageCountText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: C.white,
+  },
   scanButton: {
     backgroundColor: C.primary,
     borderRadius: 18,
@@ -400,6 +503,22 @@ const styles = StyleSheet.create({
     backgroundColor: C.sky,
     borderRadius: 14,
     padding: 14,
+  },
+  batchSummaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.cardBorder,
+    padding: 14,
+    marginTop: 20,
+  },
+  viewHistoryText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: C.primary,
   },
   infoContent: { flex: 1 },
   infoTitle: {
