@@ -97,6 +97,23 @@ export default function EditKeyScreen() {
       return;
     }
 
+    const keySets = multiSet
+      ? SETS.map(setName => ({
+        name: setName,
+        answers: answersBySet[setName] || answers,
+      }))
+      : [{ name: 'Answer key', answers }];
+    const incompleteSet = keySets.find(({ answers: setAnswers }) =>
+      setAnswers.slice(0, qCount).some(options => options.length === 0)
+    );
+    if (incompleteSet) {
+      Alert.alert(
+        'Missing Correct Answers',
+        `Select at least one correct choice for every question in ${incompleteSet.name}.`
+      );
+      return;
+    }
+
     const normalizedSetAnswers = multiSet
       ? Object.fromEntries(SETS.map(setName => [
         setName,

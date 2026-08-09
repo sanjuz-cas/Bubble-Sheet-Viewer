@@ -15,7 +15,7 @@ export interface ScanResult {
   answerKeyId: string;
   answerKeyName: string;
   subject: string;
-  detectedAnswers: string[];
+  detectedAnswers: string[][];
   correctAnswers: string[][];
   score: number;
   totalQuestions: number;
@@ -29,7 +29,7 @@ export interface ScanResult {
 
 export interface QuestionResult {
   questionNumber: number;
-  selected: string;
+  selected: string[];
   correct: string[];
   isCorrect: boolean;
 }

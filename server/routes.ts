@@ -292,18 +292,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     hdr.font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
 
     for (const q of (data.questionResults || [])) {
-      const isBlank = !q.selected;
+      const selectedText = Array.isArray(q.selected) ? q.selected.join(" + ") : q.selected;
+      const isBlank = !selectedText;
       const statusText = q.isCorrect ? "✓ Correct" : isBlank ? "— Blank" : "✗ Wrong";
       const correctText = Array.isArray(q.correct) ? q.correct.join(" or ") : q.correct;
       const notes = q.isCorrect
         ? `Correctly marked option ${correctText}`
         : isBlank
           ? `No answer — correct option is ${correctText}`
-          : `Marked option ${q.selected} — correct option is ${correctText}`;
+          : `Marked options ${selectedText} — correct options are ${correctText}`;
 
       const r2 = details.addRow({
         q:       `Q${q.questionNumber}`,
-        student: q.selected || "No answer",
+        student: selectedText || "No answer",
         correct: correctText,
         status:  statusText,
         notes,

@@ -7,4 +7,4 @@ Each question's accepted answers are represented as a list of option labels, suc
 
 **Why:** The sheet can contain six shuffled answer patterns, and some questions accept more than one correct choice. Treating either case as a single string causes incorrect grading or grades a sheet against the wrong set.
 
-**How to apply:** Detect the set before grading, select that set's answer lists, and award credit when the detected student option is included in the question's accepted list. Keep export and result displays readable by joining multiple accepted answers with “or”.
+**How to apply:** Detect the set before grading, select that set's answer lists, and award credit only when the detected student's marked-option set exactly equals the configured correct-option set. Keep export and result displays readable by joining selected choices with “+” and correct choices with “or”.

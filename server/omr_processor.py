@@ -17,7 +17,7 @@ Usage:
   python3 omr_processor.py <image_path> <total_questions> <options_per_question>
 
 Output:
-  JSON to stdout: {"detectedAnswers": ["A","B","C",...], "confidence": [0.9,...]}
+  JSON to stdout: {"detectedAnswers": [["A"],["B","C"],...], "confidence": [0.9,...]}
 """
 
 import sys
@@ -119,10 +119,20 @@ def read_calibrated_grid(gray, points, labels):
     return (labels[best_idx] if marked else "", best if marked else 0.0, scores)
 
 
+def read_marked_grid(gray, points, labels):
+    """Return every bubble with meaningful ink for multi-answer questions."""
+    scores = [sample_mark_score(gray, point) for point in points]
+    marked_labels = [
+        label for label, score in zip(labels, scores) if score >= 0.12
+    ]
+    confidence = max((score for score in scores if score >= 0.12), default=0.0)
+    return marked_labels, confidence, scores
+
+
 def process_omr_image(image_path, total_questions, options_per_question):
     """
     Full OMR pipeline matching user's original algorithm.
-    Returns dict with detectedAnswers (list of letter strings) and confidence.
+    Returns dict with detectedAnswers (list of marked-letter lists) and confidence.
     """
     image = cv2.imread(image_path)
     if image is None:
@@ -210,7 +220,7 @@ def process_omr_image(image_path, total_questions, options_per_question):
         answers = []
         confs = []
         for y in ANSWER_Y[:q_count]:
-            answer_result = read_calibrated_grid(
+            answer_result = read_marked_grid(
                 warped_gray,
                 [calibrated_point(x, y) for x in x_values],
                 option_labels,
@@ -231,7 +241,7 @@ def process_omr_image(image_path, total_questions, options_per_question):
     detected_answers = left_answers + right_answers
     confidence_scores = left_conf + right_conf
     while len(detected_answers) < total_questions:
-        detected_answers.append("")
+        detected_answers.append([])
         confidence_scores.append(0.0)
 
     print(

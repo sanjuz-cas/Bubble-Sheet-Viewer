@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 interface OMRResult {
-  detectedAnswers: string[];
+  detectedAnswers: string[][];
   confidence: number[];
   detectedSet?: string;
   detectedRollNumber?: string;

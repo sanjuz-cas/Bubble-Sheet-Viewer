@@ -99,7 +99,9 @@ export default function ScanScreen() {
       }
 
       const data = await res.json();
-      const detectedAnswers: string[] = data.detectedAnswers;
+      const detectedAnswers: string[][] = (data.detectedAnswers || []).map(
+        (answer: string[] | string) => Array.isArray(answer) ? answer : answer ? [answer] : []
+      );
       const detectedSet: string = data.detectedSet || '';
       const detectedRollNumber: string = data.detectedRollNumber || '';
       const gradingAnswers = answerKey.setAnswers?.[detectedSet] || answerKey.answers;
@@ -110,12 +112,19 @@ export default function ScanScreen() {
         );
       }
 
-      const questionResults: QuestionResult[] = gradingAnswers.map((correct, i) => ({
+      const questionResults: QuestionResult[] = gradingAnswers.map((correct, i) => {
+        const selected = detectedAnswers[i] || [];
+        const normalizedCorrect = [...correct].sort();
+        const normalizedSelected = [...selected].sort();
+        const isExactMatch = normalizedCorrect.length === normalizedSelected.length
+          && normalizedCorrect.every((answer, index) => answer === normalizedSelected[index]);
+        return {
         questionNumber: i + 1,
-        selected: detectedAnswers[i] || '',
+        selected,
         correct,
-        isCorrect: !!detectedAnswers[i] && correct.includes(detectedAnswers[i]),
-      }));
+        isCorrect: isExactMatch,
+        };
+      });
 
       const score = questionResults.filter(q => q.isCorrect).length;
       const percentage = (score / answerKey.totalQuestions) * 100;

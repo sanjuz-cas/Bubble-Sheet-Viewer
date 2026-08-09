@@ -17,8 +17,8 @@ import Colors from '@/constants/colors';
 
 const C = Colors.light;
 
-function formatCorrectAnswer(correct: string[] | string): string {
-  return Array.isArray(correct) ? correct.join(' or ') : correct;
+function formatAnswers(value: string[] | string): string {
+  return Array.isArray(value) ? value.join(' + ') : value;
 }
 
 export default function ScanResultScreen() {
@@ -44,12 +44,17 @@ export default function ScanResultScreen() {
 
   const grade = getGrade(result.percentage);
   const correctCount = result.questionResults.filter(q => q.isCorrect).length;
-  const incorrectCount = result.questionResults.filter(q => !q.isCorrect && q.selected).length;
-  const unanswered = result.questionResults.filter(q => !q.selected).length;
+  const incorrectCount = result.questionResults.filter(
+    q => !q.isCorrect && (Array.isArray(q.selected) ? q.selected.length > 0 : !!q.selected)
+  ).length;
+  const unanswered = result.questionResults.filter(
+    q => Array.isArray(q.selected) ? q.selected.length === 0 : !q.selected
+  ).length;
 
   const answerDistribution = result.questionResults.reduce((acc, q) => {
-    if (q.selected) {
-      acc[q.selected] = (acc[q.selected] || 0) + 1;
+    const selected = formatAnswers(q.selected);
+    if (selected) {
+      acc[selected] = (acc[selected] || 0) + 1;
     }
     return acc;
   }, {} as Record<string, number>);
@@ -187,8 +192,8 @@ export default function ScanResultScreen() {
                 style={[
                   styles.detailItem,
                   {
-                    backgroundColor: q.isCorrect ? '#0F2210' : !q.selected ? '#221A0A' : '#220F0F',
-                    borderColor: q.isCorrect ? '#1E4A20' : !q.selected ? '#3A2A10' : '#4A1A1A',
+                     backgroundColor: q.isCorrect ? '#0F2210' : !formatAnswers(q.selected) ? '#221A0A' : '#220F0F',
+                     borderColor: q.isCorrect ? '#1E4A20' : !formatAnswers(q.selected) ? '#3A2A10' : '#4A1A1A',
                   },
                 ]}
               >
@@ -197,16 +202,16 @@ export default function ScanResultScreen() {
                   <View style={[
                     styles.detailBubble,
                     {
-                      backgroundColor: q.isCorrect ? C.success : !q.selected ? C.warning : C.error,
+                       backgroundColor: q.isCorrect ? C.success : !formatAnswers(q.selected) ? C.warning : C.error,
                     },
                   ]}>
                     <Text style={styles.detailBubbleText}>
-                      {q.selected || '-'}
+                      {formatAnswers(q.selected) || '-'}
                     </Text>
                   </View>
                   {!q.isCorrect ? (
                     <View style={[styles.detailBubble, { backgroundColor: C.success }]}>
-                      <Text style={styles.detailBubbleText}>{formatCorrectAnswer(q.correct)}</Text>
+                      <Text style={styles.detailBubbleText}>{formatAnswers(q.correct)}</Text>
                     </View>
                   ) : null}
                 </View>
