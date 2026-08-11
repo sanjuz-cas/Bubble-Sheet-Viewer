@@ -4,6 +4,7 @@ export interface AnswerKey {
   subject: string;
   totalQuestions: number;
   optionsPerQuestion: number;
+  marksPerQuestion: number;
   /** Accepted option labels for each question, e.g. [["A", "C"], ["B"]]. */
   answers: string[][];
   setAnswers?: Record<string, string[][]>;
@@ -19,6 +20,7 @@ export interface ScanResult {
   correctAnswers: string[][];
   score: number;
   totalQuestions: number;
+  totalMarks: number;
   percentage: number;
   questionResults: QuestionResult[];
   scannedAt: string;
@@ -32,6 +34,33 @@ export interface QuestionResult {
   selected: string[];
   correct: string[];
   isCorrect: boolean;
+  mark: number;
+  correctSelected: number;
+  wrongSelected: number;
+}
+
+export function calculateQuestionMark(
+  correct: string[],
+  selected: string[],
+  totalMarks: number,
+): { mark: number; correctSelected: number; wrongSelected: number; isExactMatch: boolean } {
+  const normalizedCorrect = [...correct].sort();
+  const normalizedSelected = [...selected].sort();
+  const correctSelected = selected.filter(answer => correct.includes(answer)).length;
+  const wrongSelected = selected.filter(answer => !correct.includes(answer)).length;
+  const isExactMatch = normalizedCorrect.length === normalizedSelected.length
+    && normalizedCorrect.every((answer, index) => answer === normalizedSelected[index]);
+
+  if (correctSelected === 0 || correct.length === 0) {
+    return { mark: 0, correctSelected, wrongSelected, isExactMatch };
+  }
+
+  return {
+    mark: (correctSelected * totalMarks) / (correct.length * (2 ** wrongSelected)),
+    correctSelected,
+    wrongSelected,
+    isExactMatch,
+  };
 }
 
 export type Grade = 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F';

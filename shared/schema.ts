@@ -34,7 +34,7 @@ export const scanResults = pgTable("scan_results", {
   answerKeyName: text("answer_key_name").notNull(),
   subject: text("subject").notNull(),
   dataEncrypted: text("data_encrypted").notNull(),
-  score: integer("score").notNull(),
+  score: real("score").notNull(),
   totalQuestions: integer("total_questions").notNull(),
   percentage: real("percentage").notNull(),
   scannedAt: timestamp("scanned_at").defaultNow().notNull(),

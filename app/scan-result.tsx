@@ -21,6 +21,10 @@ function formatAnswers(value: string[] | string): string {
   return Array.isArray(value) ? value.join(' + ') : value;
 }
 
+function formatMark(value: number): string {
+  return Number(value).toFixed(2).replace(/\.?0+$/, '');
+}
+
 export default function ScanResultScreen() {
   const insets = useSafeAreaInsets();
   const { resultId } = useLocalSearchParams<{ resultId: string }>();
@@ -127,7 +131,9 @@ export default function ScanResultScreen() {
               <View style={styles.gradeBadge}>
                 <Text style={styles.gradeBadgeText}>{grade}</Text>
               </View>
-              <Text style={styles.scoreFraction}>{result.score} / {result.totalQuestions}</Text>
+              <Text style={styles.scoreFraction}>
+                {formatMark(result.score)} / {formatMark(result.totalMarks)}
+              </Text>
               <Text style={styles.scoreKeyName}>{result.answerKeyName}</Text>
               <Text style={styles.scoreSubject}>{result.subject}</Text>
             </View>
@@ -220,6 +226,9 @@ export default function ScanResultScreen() {
                 ) : (
                   <Ionicons name="close" size={14} color={C.error} />
                 )}
+                <Text style={styles.questionMark}>
+                  {formatMark(Number.isFinite(q.mark) ? q.mark : q.isCorrect ? 1 : 0)} mark
+                </Text>
               </View>
             ))}
           </View>
@@ -399,6 +408,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Nunito_700Bold',
     fontSize: 12,
     color: C.white,
+  },
+  questionMark: {
+    fontFamily: 'Nunito_600SemiBold',
+    fontSize: 10,
+    color: C.textSecondary,
+    marginLeft: 4,
   },
   dateText: {
     fontFamily: 'Nunito_400Regular',

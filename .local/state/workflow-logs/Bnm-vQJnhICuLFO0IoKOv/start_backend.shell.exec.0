@@ -1,0 +1,77 @@
+
+> expo-app@1.0.0 server:dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0KServing static Expo files with dynamic manifest routing
+Expo routing: Checking expo-platform header on / and /manifest
+express server serving on port 5000
+GET /api/results 401 in 6ms :: {"error":"Invalid or expired token"}
+GET /api/keys 401 in 2ms :: {"error":"Invalid or expired token"}
+GET /api/keys 401 in 7ms :: {"error":"Invalid or expired token"}
+GET /api/keys 401 in 9ms :: {"error":"Invalid or expired token"}
+POST /api/keys 200 in 107ms :: {"ok":true}
+GET /api/keys 200 in 6ms :: [{"id":"d7edb534-a219-4df2-b485-7ad8897b39e6","name…
+[OMR Python stderr] DEBUG [Replit]: calibrated template; set=SET 4 roll=23457 answers=10
+
+POST /api/scan 200 in 4631ms :: {"detectedAnswers":[["B"],["D"],["C"],["E"],["F…
+Internal Server Error: error: null value in column "score" of relation "scan_results" violates not-null constraint
+    at [90m/home/runner/workspace/[39mnode_modules/[4mpg-pool[24m/index.js:45:11
+[90m    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)[39m
+    at async <anonymous> [90m(/home/runner/workspace/[39mserver/routes.ts:227:7[90m)[39m {
+  length: [33m434[39m,
+  severity: [32m'ERROR'[39m,
+  code: [32m'23502'[39m,
+  detail: [32m'Failing row contains (2bc79d9a-7678-473e-babe-6a9afa4726a3, b58f7e18-f802-41ed-acfa-05a224a9e274, d7edb534-a219-4df2-b485-7ad8897b39e6, M2, Math, ikL7ZiJKh8LzUN7K.3GV375HQcU2JuZSiikNoMA==.PIWW459gVHQqsWdfTTCgpV..., null, 10, 0, 2026-08-09 12:14:21.579345).'[39m,
+  hint: [90mundefined[39m,
+  position: [90mundefined[39m,
+  internalPosition: [90mundefined[39m,
+  internalQuery: [90mundefined[39m,
+  where: [90mundefined[39m,
+  schema: [32m'public'[39m,
+  table: [32m'scan_results'[39m,
+  column: [32m'score'[39m,
+  dataType: [90mundefined[39m,
+  constraint: [90mundefined[39m,
+  file: [32m'execMain.c'[39m,
+  line: [32m'2011'[39m,
+  routine: [32m'ExecConstraints'[39m
+}
+POST /api/results 500 in 25ms :: {"message":"null value in column \"score\" of …
+[OMR Python stderr] DEBUG [Replit]: calibrated template; set=SET 1 roll=35467 answers=10
+
+POST /api/scan 200 in 1706ms :: {"detectedAnswers":[[],[],[],[],[],[],[],[],[],…
+POST /api/auth/verify 200 in 455ms :: {"ok":true}
+GET /api/results 304 in 36ms :: [{"id":"6fb9e202-6f9f-4797-aa86-944eb4040664","…
+GET /api/keys 304 in 4ms :: [{"id":"d7edb534-a219-4df2-b485-7ad8897b39e6","name…
+GET /api/keys 304 in 14ms :: [{"id":"d7edb534-a219-4df2-b485-7ad8897b39e6","nam…
+GET /api/keys 304 in 7ms :: [{"id":"d7edb534-a219-4df2-b485-7ad8897b39e6","name…
+GET /api/keys 304 in 4ms :: [{"id":"d7edb534-a219-4df2-b485-7ad8897b39e6","name…
+[OMR Python stderr] DEBUG [Replit]: calibrated template; set=SET 4 roll=23457 answers=10
+
+POST /api/scan 200 in 1812ms :: {"detectedAnswers":[["B"],["D"],["C"],["E"],["F…
+Internal Server Error: error: null value in column "score" of relation "scan_results" violates not-null constraint
+    at [90m/home/runner/workspace/[39mnode_modules/[4mpg-pool[24m/index.js:45:11
+[90m    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)[39m
+    at async <anonymous> [90m(/home/runner/workspace/[39mserver/routes.ts:227:7[90m)[39m {
+  length: [33m434[39m,
+  severity: [32m'ERROR'[39m,
+  code: [32m'23502'[39m,
+  detail: [32m'Failing row contains (f7ba2f39-b39d-4755-95ab-86dd123d6d6e, b58f7e18-f802-41ed-acfa-05a224a9e274, d7edb534-a219-4df2-b485-7ad8897b39e6, M2, Math, A4mjh4wyYMuCujX5.5XWSTWV8pfDoTFUva6DR3A==.nTE4KOZjRumn7FzCRKeXQa..., null, 10, 0, 2026-08-09 12:16:35.674391).'[39m,
+  hint: [90mundefined[39m,
+  position: [90mundefined[39m,
+  internalPosition: [90mundefined[39m,
+  internalQuery: [90mundefined[39m,
+  where: [90mundefined[39m,
+  schema: [32m'public'[39m,
+  table: [32m'scan_results'[39m,
+  column: [32m'score'[39m,
+  dataType: [90mundefined[39m,
+  constraint: [90mundefined[39m,
+  file: [32m'execMain.c'[39m,
+  line: [32m'2011'[39m,
+  routine: [32m'ExecConstraints'[39m
+}
+POST /api/results 500 in 7ms :: {"message":"null value in column \"score\" of r…
+GET /api/results 200 in 16ms :: [{"id":"ae8bed19-0802-490f-a849-434fad6df630","…
+GET /api/keys 304 in 15ms :: [{"id":"d7edb534-a219-4df2-b485-7ad8897b39e6","nam…
+GET /api/results 304 in 3ms :: [{"id":"ae8bed19-0802-490f-a849-434fad6df630","a…

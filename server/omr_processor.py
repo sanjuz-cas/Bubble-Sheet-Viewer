@@ -129,10 +129,59 @@ def read_marked_grid(gray, points, labels):
     return marked_labels, confidence, scores
 
 
-def process_omr_image(image_path, total_questions, options_per_question):
+def find_page_contour(gray, min_area_ratio=0.20):
+    """Find the portrait paper rectangle in a scan or a photographed sheet.
+
+    Edge-only detection is unreliable when a white page sits on a textured
+    desk: part of the page edge can be faint, which makes the old fallback
+    calibrate to the entire photograph.  First try the page edge, then use a
+    bright-paper mask as a camera-photo fallback.
     """
-    Full OMR pipeline matching user's original algorithm.
-    Returns dict with detectedAnswers (list of marked-letter lists) and confidence.
+    image_area = gray.shape[0] * gray.shape[1]
+
+    def pick_rectangle(contours):
+        for contour in sorted(contours, key=cv2.contourArea, reverse=True):
+            if cv2.contourArea(contour) < image_area * min_area_ratio:
+                continue
+            perimeter = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+            if len(approx) != 4:
+                continue
+            _, _, width, height = cv2.boundingRect(approx)
+            if height / max(width, 1) > 1.1:
+                return approx
+        return None
+
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
+    edges = cv2.dilate(
+        edges, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)), iterations=2
+    )
+    contours = grab_contours(
+        cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    )
+    page = pick_rectangle(contours)
+    if page is not None:
+        return page
+
+    # A sheet on a darker/table background is normally the largest bright
+    # region. Closing bridges text and shadow gaps before extracting its edge.
+    _, paper = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    paper = cv2.morphologyEx(
+        paper,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21)),
+        iterations=2,
+    )
+    contours = grab_contours(
+        cv2.findContours(paper, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    )
+    return pick_rectangle(contours)
+
+
+def fallback_process(image_path, total_questions, options_per_question):
+    """
+    Original hardcoded fractional coordinate OMR pipeline.
     """
     image = cv2.imread(image_path)
     if image is None:
@@ -150,30 +199,9 @@ def process_omr_image(image_path, total_questions, options_per_question):
         )
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edged = cv2.Canny(blurred, 75, 200)
-
-    # Find document corners for perspective correction
-    cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = grab_contours(cnts)
-    docCnt = None
-    if len(cnts) > 0:
-        image_area = gray.shape[0] * gray.shape[1]
-        cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
-        for c in cnts:
-            contour_area = cv2.contourArea(c)
-            # Do not mistake the answer table or a registration mark for the
-            # page. A valid page outline is a large portrait rectangle.
-            if contour_area < image_area * 0.70:
-                continue
-            peri = cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-            if len(approx) == 4:
-                _, _, contour_width, contour_height = cv2.boundingRect(approx)
-                if contour_height / max(contour_width, 1) < 1.20:
-                    continue
-                docCnt = approx
-                break
+    # Use the same page detector as the primary path.  In particular, do not
+    # require a paper rectangle to occupy nearly the entire camera frame.
+    docCnt = find_page_contour(gray, min_area_ratio=0.20)
 
     if docCnt is None:
         # A scan can be tightly cropped or have a very faint page border. The
@@ -256,6 +284,205 @@ def process_omr_image(image_path, total_questions, options_per_question):
         "detectedSet": set_result[0],
         "detectedRollNumber": "".join(roll_digits),
         "rollConfidence": roll_confidence,
+    }
+
+
+def process_omr_image(image_path, total_questions, options_per_question):
+    """
+    Robust dynamic OMR pipeline that:
+    1. Isolates the OMR sheet from the background via perspective transform
+    2. Finds and clusters bubbles dynamically on the isolated page
+    Falls back to hardcoded coordinates if dynamic extraction fails.
+    """
+    image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError(f"Could not read image: {image_path}")
+
+    # --- Step 1: Isolate the page from the background ---
+    orig_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    orig_h, orig_w = orig_gray.shape
+
+    # Resize for processing
+    proc_scale = 1200.0 / max(orig_h, 1)
+    proc_gray = cv2.resize(orig_gray, (int(orig_w * proc_scale), 1200), interpolation=cv2.INTER_AREA)
+    proc_h, proc_w = proc_gray.shape
+
+    page_cnt = find_page_contour(proc_gray, min_area_ratio=0.20)
+
+    if page_cnt is not None:
+        # Perspective-transform to a clean 800x1200 canvas
+        warped = four_point_transform(proc_gray, page_cnt.reshape(4, 2))
+        print("DEBUG [OMR]: Page isolated via perspective transform", file=sys.stderr)
+    else:
+        # No page border found - assume the image IS the page (e.g. a flat scan)
+        warped = cv2.resize(proc_gray, CANVAS_SIZE, interpolation=cv2.INTER_AREA)
+        print("DEBUG [OMR]: No page border found; using full frame", file=sys.stderr)
+
+    # --- Step 2: Detect bubbles on the ISOLATED page only ---
+    gray = warped
+    thresh = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 51, 15
+    )
+    cnts = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = grab_contours(cnts)
+
+    bubbles = []
+    for c in cnts:
+        x, y, w, h = cv2.boundingRect(c)
+        aspect = w / float(max(h, 1))
+        if 0.7 <= aspect <= 1.4:
+            area = cv2.contourArea(c)
+            if 80 < area < 2000:
+                perimeter = cv2.arcLength(c, True)
+                if perimeter > 0:
+                    circularity = 4 * np.pi * (area / (perimeter * perimeter))
+                    if circularity > 0.55:
+                        bubbles.append((int(x + w / 2), int(y + h / 2), w, h))
+
+    # Deduplicate nearby bubbles
+    unique_bubbles = []
+    for b in bubbles:
+        if not any(np.hypot(b[0] - ub[0], b[1] - ub[1]) < 12 for ub in unique_bubbles):
+            unique_bubbles.append(b)
+
+    unique_bubbles.sort(key=lambda b: b[1])
+
+    # --- Step 3: Cluster bubbles into rows ---
+    rows = []
+    current_row = []
+    for b in unique_bubbles:
+        if not current_row:
+            current_row.append(b)
+        else:
+            if abs(b[1] - current_row[0][1]) < 18:
+                current_row.append(b)
+            else:
+                rows.append(current_row)
+                current_row = [b]
+    if current_row:
+        rows.append(current_row)
+
+    for r in rows:
+        r.sort(key=lambda b: b[0])
+
+    print(f"DEBUG [OMR]: Found {len(unique_bubbles)} bubbles in {len(rows)} rows "
+          f"(row sizes: {[len(r) for r in rows]})", file=sys.stderr)
+
+    valid_rows = [r for r in rows if len(r) >= 5]
+
+    if len(valid_rows) < 16:
+        print(f"DEBUG [OMR]: Dynamic grid failed ({len(valid_rows)} valid rows < 16). Using fallback.", file=sys.stderr)
+        return fallback_process(image_path, total_questions, options_per_question)
+
+    # --- Step 4: Identify structural blocks ---
+    # Find the ROLL block: 10 consecutive rows of exactly 5 bubbles each
+    roll_start = -1
+    for i in range(len(valid_rows) - 9):
+        if all(len(valid_rows[i + j]) == 5 for j in range(10)):
+            roll_start = i
+            break
+
+    if roll_start == -1:
+        print("DEBUG [OMR]: Dynamic grid failed (ROLL block not found).", file=sys.stderr)
+        return fallback_process(image_path, total_questions, options_per_question)
+
+    # SET row: the closest row with 6 bubbles above the roll block
+    set_row = None
+    for i in range(roll_start - 1, -1, -1):
+        if len(valid_rows[i]) == 6:
+            set_row = valid_rows[i]
+            break
+
+    # ANSWER rows: rows with >=7 bubbles (two columns of options) after the roll block
+    answer_rows = []
+    for r in valid_rows[roll_start + 10:]:
+        if len(r) >= 7:
+            answer_rows.append(r)
+
+    if not set_row or len(answer_rows) < 5:
+        print(f"DEBUG [OMR]: Dynamic grid failed (set={set_row is not None}, "
+              f"answer_rows={len(answer_rows)}).", file=sys.stderr)
+        return fallback_process(image_path, total_questions, options_per_question)
+
+    answer_rows = answer_rows[:5]
+
+    # --- Step 5: Read marks ---
+    def eval_b(b):
+        return sample_mark_score(gray, (b[0], b[1]))
+
+    # SET detection
+    set_scores = [eval_b(b) for b in set_row]
+    best_set = int(np.argmax(set_scores)) if set_scores else 0
+    set_result = f"SET {best_set + 1}" if (set_scores and set_scores[best_set] >= 0.12) else ""
+
+    # ROLL NUMBER (digits 0-9)
+    roll_digits = []
+    roll_confs = []
+    for col in range(5):
+        col_scores = [eval_b(valid_rows[roll_start + row][col]) for row in range(10)]
+        best_idx = int(np.argmax(col_scores))
+        if col_scores[best_idx] >= 0.12:
+            roll_digits.append(str(best_idx))
+            roll_confs.append(col_scores[best_idx])
+        else:
+            roll_digits.append("")
+            roll_confs.append(0.0)
+
+    # ANSWERS
+    detected_answers = []
+    confidence_scores = []
+    option_labels = ["A", "B", "C", "D", "E", "F"]
+    opts = int(options_per_question)
+
+    for ans_row in answer_rows:
+        # Split the row into left and right columns using the gap in the middle
+        xs = [b[0] for b in ans_row]
+        # Find the largest gap to split left/right columns
+        gaps = [(xs[i + 1] - xs[i], i) for i in range(len(xs) - 1)]
+        gaps.sort(reverse=True)
+        if gaps:
+            split_idx = gaps[0][1] + 1
+        else:
+            split_idx = len(ans_row) // 2
+
+        left_bubbles = ans_row[:split_idx]
+        right_bubbles = ans_row[split_idx:]
+
+        for col_bubbles in [left_bubbles, right_bubbles]:
+            if len(detected_answers) >= total_questions:
+                break
+            # Skip the first bubble if it looks like a Q.No marker (narrower column)
+            actual_bubbles = col_bubbles
+            if len(actual_bubbles) > opts:
+                # The first element is likely the Q.No. marker - skip it
+                actual_bubbles = actual_bubbles[1:]
+            if len(actual_bubbles) > opts:
+                actual_bubbles = actual_bubbles[:opts]
+
+            if len(actual_bubbles) < opts:
+                detected_answers.append([])
+                confidence_scores.append(0.0)
+                continue
+
+            scores = [eval_b(b) for b in actual_bubbles]
+            marked = [option_labels[i] for i, s in enumerate(scores) if s >= 0.12]
+            conf = max(scores) if scores else 0.0
+            detected_answers.append(marked)
+            confidence_scores.append(conf)
+
+    while len(detected_answers) < total_questions:
+        detected_answers.append([])
+        confidence_scores.append(0.0)
+
+    print(f"DEBUG [OMR]: Dynamic grid successful; set={set_result} "
+          f"roll={''.join(roll_digits)} answers={len(detected_answers)}", file=sys.stderr)
+
+    return {
+        "detectedAnswers": detected_answers[:total_questions],
+        "confidence": confidence_scores[:total_questions],
+        "detectedSet": set_result,
+        "detectedRollNumber": "".join(roll_digits),
+        "rollConfidence": roll_confs,
     }
 
 

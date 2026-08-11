@@ -26,6 +26,7 @@ export default function EditKeyScreen() {
   const [subject, setSubject] = useState('Math');
   const [totalQuestions, setTotalQuestions] = useState('30');
   const [optionsCount, setOptionsCount] = useState(6);
+
   const [answers, setAnswers] = useState<AnswerOptions[]>([]);
   const [multiSet, setMultiSet] = useState(false);
   const [activeSet, setActiveSet] = useState('SET 1');
@@ -74,7 +75,7 @@ export default function EditKeyScreen() {
     } else if (answers.length !== qCount) {
       setAnswers(prev => normalize(prev));
     }
-  }, [qCount, multiSet]);
+  }, [qCount, multiSet, answers]);
 
   const enableMultiSet = () => {
     setAnswersBySet(prev => {
@@ -96,6 +97,7 @@ export default function EditKeyScreen() {
       Alert.alert('Invalid Questions', 'Enter between 1 and 200 questions.');
       return;
     }
+    const marks = 1;
 
     const keySets = multiSet
       ? SETS.map(setName => ({
@@ -126,6 +128,7 @@ export default function EditKeyScreen() {
       subject,
       totalQuestions: qCount,
       optionsPerQuestion: optionsCount,
+      marksPerQuestion: marks,
       answers: (multiSet ? normalizedSetAnswers?.['SET 1'] : answers)?.slice(0, qCount) || [],
       ...(normalizedSetAnswers ? { setAnswers: normalizedSetAnswers } : {}),
       createdAt: new Date().toISOString(),
@@ -214,6 +217,7 @@ export default function EditKeyScreen() {
               ))}
             </View>
           </View>
+
         </View>
 
         <View style={styles.inputGroup}>

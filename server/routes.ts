@@ -39,6 +39,10 @@ function gradeLabel(pct: number): string {
   return "F";
 }
 
+function formatMark(value: number): string {
+  return Number(value).toFixed(2).replace(/\.?0+$/, "");
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth ──────────────────────────────────────────────────────────────
@@ -117,42 +121,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       where: eq(answerKeys.userId, userId),
       orderBy: (t, { desc }) => [desc(t.createdAt)],
     });
-    res.json(rows.map((r) => {
-      const stored = JSON.parse(decrypt(r.answersEncrypted));
-      const isLegacyAnswers = Array.isArray(stored);
-      const normalizeAnswers = (values: unknown): string[][] =>
-        Array.isArray(values)
-          ? values.map((value) => Array.isArray(value) ? value.filter(Boolean) : value ? [String(value)] : [])
-          : [];
-      return {
-        id: r.id,
-        name: r.name,
-        subject: r.subject,
-        totalQuestions: r.totalQuestions,
-        optionsPerQuestion: r.optionsPerQuestion,
-        answers: normalizeAnswers(isLegacyAnswers ? stored : (stored.answers || [])),
-        ...(isLegacyAnswers || !stored.setAnswers
-          ? {}
-          : { setAnswers: Object.fromEntries(
-              Object.entries(stored.setAnswers).map(([setName, values]) => [
-                setName,
-                normalizeAnswers(values),
-              ])
-            ) }),
-        createdAt: r.createdAt.toISOString(),
-      };
-    }));
+    const validRows = [];
+    for (const r of rows) {
+      try {
+        const stored = JSON.parse(decrypt(r.answersEncrypted));
+        const isLegacyAnswers = Array.isArray(stored);
+        const normalizeAnswers = (values: unknown): string[][] =>
+          Array.isArray(values)
+            ? values.map((value) => Array.isArray(value) ? value.filter(Boolean) : value ? [String(value)] : [])
+            : [];
+        validRows.push({
+          id: r.id,
+          name: r.name,
+          subject: r.subject,
+          totalQuestions: r.totalQuestions,
+          optionsPerQuestion: r.optionsPerQuestion,
+          marksPerQuestion: Number(stored.marksPerQuestion) > 0 ? Number(stored.marksPerQuestion) : 1,
+          answers: normalizeAnswers(isLegacyAnswers ? stored : (stored.answers || [])),
+          ...(isLegacyAnswers || !stored.setAnswers
+            ? {}
+            : { setAnswers: Object.fromEntries(
+                Object.entries(stored.setAnswers).map(([setName, values]) => [
+                  setName,
+                  normalizeAnswers(values),
+                ])
+              ) }),
+          createdAt: r.createdAt.toISOString(),
+        });
+      } catch (e) {
+        console.warn(`Skipping key ${r.id} due to decryption error`);
+      }
+    }
+    res.json(validRows);
   });
 
   app.post("/api/keys", requireAuth, async (req: Request, res: Response) => {
     const userId = (req as any).userId;
     const {
-      id, name, subject, totalQuestions, optionsPerQuestion, answers, setAnswers,
+      id, name, subject, totalQuestions, optionsPerQuestion, marksPerQuestion, answers, setAnswers,
     } = req.body;
     if (!id || !name || !answers) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-    const answersEncrypted = encrypt(JSON.stringify({ answers, setAnswers }));
+    const answersEncrypted = encrypt(JSON.stringify({
+      answers,
+      setAnswers,
+      marksPerQuestion: Number(marksPerQuestion) > 0 ? Number(marksPerQuestion) : 1,
+    }));
     const existing = await db.query.answerKeys.findFirst({
       where: and(eq(answerKeys.id, id), eq(answerKeys.userId, userId)),
     });
@@ -185,27 +200,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       where: eq(scanResults.userId, userId),
       orderBy: (t, { desc }) => [desc(t.scannedAt)],
     });
-    res.json(rows.map((r) => {
-      const data = JSON.parse(decrypt(r.dataEncrypted));
-      return {
-        id: r.id,
-        answerKeyId: r.answerKeyId,
-        answerKeyName: r.answerKeyName,
-        subject: r.subject,
-        score: r.score,
-        totalQuestions: r.totalQuestions,
-        percentage: r.percentage,
-        scannedAt: r.scannedAt.toISOString(),
-        ...data,
-      };
-    }));
+    const validRows = [];
+    for (const r of rows) {
+      try {
+        const data = JSON.parse(decrypt(r.dataEncrypted));
+        validRows.push({
+          id: r.id,
+          answerKeyId: r.answerKeyId,
+          answerKeyName: r.answerKeyName,
+          subject: r.subject,
+          score: r.score,
+          totalQuestions: r.totalQuestions,
+          totalMarks: Number(data.totalMarks) > 0 ? Number(data.totalMarks) : r.totalQuestions,
+          percentage: r.percentage,
+          scannedAt: r.scannedAt.toISOString(),
+          ...data,
+        });
+      } catch (e) {
+        console.warn(`Skipping result ${r.id} due to decryption error`);
+      }
+    }
+    res.json(validRows);
   });
 
   app.post("/api/results", requireAuth, async (req: Request, res: Response) => {
     const userId = (req as any).userId;
     const {
       id, answerKeyId, answerKeyName, subject, score, totalQuestions,
-      percentage, detectedAnswers, correctAnswers, questionResults, imageUri,
+      percentage, totalMarks, detectedAnswers, correctAnswers, questionResults, imageUri,
       detectedSet, detectedRollNumber,
     } = req.body;
     if (!id) return res.status(400).json({ error: "Missing id" });
@@ -219,6 +241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           detectedAnswers,
           correctAnswers,
           questionResults,
+          totalMarks,
           imageUri,
           detectedSet,
           detectedRollNumber,
@@ -272,7 +295,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       { field: "Subject", value: row.subject },
       { field: "Roll Number", value: data.detectedRollNumber || "Not detected" },
       { field: "Set", value: data.detectedSet || "Not detected" },
-      { field: "Score", value: `${row.score} / ${row.totalQuestions}` },
+      { field: "Score", value: `${formatMark(row.score)} / ${formatMark(data.totalMarks || row.totalQuestions)}` },
       { field: "Percentage", value: `${Math.round(row.percentage)}%` },
       { field: "Grade", value: gradeLabel(row.percentage) },
       { field: "Scanned At", value: new Date(row.scannedAt).toLocaleString() },
@@ -283,6 +306,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       { header: "Question",        key: "q",       width: 12 },
       { header: "Student Marked",  key: "student", width: 18 },
       { header: "Correct Answer",  key: "correct", width: 18 },
+      { header: "Mark",            key: "mark",    width: 10 },
       { header: "Status",          key: "status",  width: 12 },
       { header: "Notes",           key: "notes",   width: 36 },
     ];
@@ -306,6 +330,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         q:       `Q${q.questionNumber}`,
         student: selectedText || "No answer",
         correct: correctText,
+        mark:    formatMark(Number(q.mark) || 0),
         status:  statusText,
         notes,
       });

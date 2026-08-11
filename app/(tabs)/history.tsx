@@ -17,6 +17,10 @@ import Colors from '@/constants/colors';
 
 const C = Colors.light;
 
+function formatMark(value: number): string {
+  return Number(value).toFixed(2).replace(/\.?0+$/, '');
+}
+
 function ResultCard({
   item,
   onDelete,
@@ -53,7 +57,9 @@ function ResultCard({
       </View>
       <View style={styles.resultScoreArea}>
         <Text style={styles.scorePercent}>{Math.round(item.percentage)}%</Text>
-        <Text style={styles.scoreFraction}>{item.score}/{item.totalQuestions}</Text>
+        <Text style={styles.scoreFraction}>
+          {formatMark(item.score)}/{formatMark(item.totalMarks)}
+        </Text>
         <Ionicons name="lock-closed" size={12} color={C.textLight} style={{ marginTop: 4 }} />
       </View>
     </Pressable>

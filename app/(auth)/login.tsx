@@ -128,7 +128,7 @@ export default function LoginScreen() {
           </Pressable>
 
           <View style={styles.switchRow}>
-            <Text style={styles.switchText}>Don't have an account?</Text>
+            <Text style={styles.switchText}>Don&apos;t have an account?</Text>
             <Pressable onPress={() => router.replace('/(auth)/register')}>
               <Text style={styles.switchLink}> Create one</Text>
             </Pressable>

@@ -1,0 +1,8 @@
+
+> expo-app@1.0.0 expo:dev
+> EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000 npx expo start --localhost
+
+[1G[0K[1G[0K⠙[1G[0K[90mStarting project at /home/runner/workspace[39m
+› Port [1m8081[22m is running this app in another window
+[90m  /home/runner/workspace [90m(pid 1545)[39m[90m[39m
+[?25l[2K[1G[36m?[39m [1mUse port 8082 instead?[22m [90m›[39m [90m(Y/n)[39m

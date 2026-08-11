@@ -1,6 +1,8 @@
 import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+import Constants from "expo-constants";
+
 /**
  * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
  * @returns {string} The API base URL
@@ -9,10 +11,18 @@ export function getApiUrl(): string {
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+    const debuggerHost = Constants.expoConfig?.hostUri;
+    if (debuggerHost) {
+      // In development, the Expo bundler IP is usually the same machine running the backend
+      host = debuggerHost.split(":")[0] + ":5000";
+    } else {
+      host = "localhost:5000";
+    }
   }
 
-  let url = new URL(`https://${host}`);
+  // Use http for local IPs/localhost, and https for production domains
+  const protocol = host.includes("localhost") || host.match(/^\d{1,3}\./) ? "http" : "https";
+  let url = new URL(`${protocol}://${host}`);
 
   return url.href;
 }

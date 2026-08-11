@@ -1,0 +1,51 @@
+Here's a clean, self-contained spec you can hand to Replit's AI agent. It defines the rule precisely, covers edge cases, and includes pseudocode so it can implement it directly.
+
+---
+
+## Marking Scheme Specification — Multiple Correct Answer Questions
+
+**Context:** Each question has multiple options (a, b, c, d, ...), of which `n` are correct. The question carries a total weight of `T` marks. A student can select any number of options.
+
+**Definitions:**
+- `n` = number of correct answers for the question
+- `T` = total marks allotted to the question
+- `m` = number of correct answers the student selected (0 ≤ m ≤ n)
+- `P` = number of wrong (incorrect) answers the student selected
+- `S` = base score if only correct answers were selected = `(m × T) / n`
+
+**Scoring Rules:**
+
+1. **No correct answer selected** (m = 0): Mark = 0, regardless of P.
+2. **At least one correct answer selected** (m ≥ 1): Every wrong answer selected **halves the current score**.
+
+$$\text{Mark} = S \times \left(\frac{1}{2}\right)^P = \frac{m \times T}{n \times 2^P}$$
+
+**Worked examples** (say n = 3, T = 3, so each correct option = 1 mark):
+| Correct picked (m) | Wrong picked (P) | Mark |
+|---|---|---|
+| 0 | any | 0 |
+| 2 | 0 | 2 |
+| 2 | 1 | 1 |
+| 2 | 2 | 0.5 |
+| 3 | 0 | 3 |
+| 3 | 1 | 1.5 |
+| 1 | 3 | 0.125 |
+
+**Pseudocode:**
+```
+function calculateMark(n, T, m, P):
+    if m == 0:
+        return 0
+    S = (m * T) / n
+    mark = S / (2 ** P)
+    return mark
+```
+
+**Notes for implementation:**
+- Mark should be rounded/displayed to a sensible precision (e.g., 2 decimal places) since halving can produce fractions like 0.125, 0.0625, etc.
+- Mark can never be negative or reach exactly zero once m ≥ 1 (it only approaches zero asymptotically) — but you may want to round very small values (e.g., below 0.01) down to 0 for display purposes, your call.
+- Apply this per-question, then sum across all questions for the total score.
+
+---
+
+One thing worth double-checking before you hand this off: is this halving-per-wrong-answer rule actually stated in your exam's instructions, or did you reconstruct it from the scratch work? If there's an official rule sheet, it's worth comparing against this to make sure the interpretation is right before you build it into the app.

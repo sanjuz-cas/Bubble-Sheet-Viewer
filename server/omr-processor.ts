@@ -25,7 +25,7 @@ export async function processOMRImage(
     const scriptPath = join(process.cwd(), "server", "omr_processor.py");
 
     const result = await new Promise<OMRResult>((resolve, reject) => {
-      const py = spawn("python3", [
+      const py = spawn(process.platform === "win32" ? "python" : "python3", [
         scriptPath,
         tmpPath,
         String(totalQuestions),

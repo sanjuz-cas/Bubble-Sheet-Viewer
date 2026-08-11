@@ -13,6 +13,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { getApiUrl } from '@/lib/query-client';
 import { getAuthToken } from '@/lib/auth-token';
 import { getAnswerKeys, saveScanResult } from '@/lib/storage';
+import { calculateQuestionMark } from '@/lib/types';
 import type { AnswerKey, ScanResult, QuestionResult } from '@/lib/types';
 import Colors from '@/constants/colors';
 
@@ -32,7 +33,7 @@ export default function ScanScreen() {
       setKeys(k);
       if (k.length > 0 && !selectedKey) setSelectedKey(k[0]);
     });
-  }, []));
+  }, [selectedKey]));
 
   const pickImage = async (useCamera: boolean) => {
     try {
@@ -75,11 +76,18 @@ export default function ScanScreen() {
 
       const uriParts = imageUri.split('.');
       const ext = uriParts[uriParts.length - 1] || 'jpg';
-      formData.append('image', {
-        uri: imageUri,
-        name: `scan.${ext}`,
-        type: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
-      } as any);
+      
+      if (Platform.OS === 'web') {
+        const response = await fetch(imageUri);
+        const blob = await response.blob();
+        formData.append('image', blob, `scan.${ext}`);
+      } else {
+        formData.append('image', {
+          uri: imageUri,
+          name: `scan.${ext}`,
+          type: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
+        } as any);
+      }
 
       formData.append('totalQuestions', String(answerKey.totalQuestions));
       formData.append('optionsPerQuestion', String(answerKey.optionsPerQuestion));
@@ -114,20 +122,24 @@ export default function ScanScreen() {
 
       const questionResults: QuestionResult[] = gradingAnswers.map((correct, i) => {
         const selected = detectedAnswers[i] || [];
-        const normalizedCorrect = [...correct].sort();
-        const normalizedSelected = [...selected].sort();
-        const isExactMatch = normalizedCorrect.length === normalizedSelected.length
-          && normalizedCorrect.every((answer, index) => answer === normalizedSelected[index]);
+        // Each question's max marks = number of correct options it has
+        const questionMarks = Math.max(correct.length, 1);
+        const grading = calculateQuestionMark(correct, selected, questionMarks);
         return {
-        questionNumber: i + 1,
-        selected,
-        correct,
-        isCorrect: isExactMatch,
+          questionNumber: i + 1,
+          selected,
+          correct,
+          isCorrect: grading.isExactMatch,
+          mark: grading.mark,
+          correctSelected: grading.correctSelected,
+          wrongSelected: grading.wrongSelected,
         };
       });
 
-      const score = questionResults.filter(q => q.isCorrect).length;
-      const percentage = (score / answerKey.totalQuestions) * 100;
+      // Total marks = sum of correct option counts across all questions
+      const totalMarks = gradingAnswers.reduce((sum, correct) => sum + Math.max(correct.length, 1), 0);
+      const score = questionResults.reduce((sum, question) => sum + question.mark, 0);
+      const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
 
       return {
         id: Crypto.randomUUID(),
@@ -138,6 +150,7 @@ export default function ScanScreen() {
         correctAnswers: gradingAnswers,
         score,
         totalQuestions: answerKey.totalQuestions,
+        totalMarks,
         percentage,
         questionResults,
         scannedAt: new Date().toISOString(),
@@ -358,7 +371,8 @@ export default function ScanScreen() {
             <View style={styles.infoContent}>
               <Text style={styles.infoTitle}>Selected: {selectedKey.name}</Text>
               <Text style={styles.infoText}>
-                {selectedKey.totalQuestions} questions  {selectedKey.optionsPerQuestion} options each
+                 {selectedKey.totalQuestions} questions  {selectedKey.optionsPerQuestion} options each
+                 {' · '}{selectedKey.marksPerQuestion} mark{selectedKey.marksPerQuestion === 1 ? '' : 's'} each
               </Text>
             </View>
           </View>
