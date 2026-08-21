@@ -60,7 +60,7 @@ It is designed to make OMR evaluation faster and more accessible without requiri
 <p align="center">
   <img src="assets/images/bubblescan-ui.png"
        alt="BubbleScan application interface"
-       width="850">
+       width="350">
 </p>
 
 <p align="center">
