@@ -11,7 +11,9 @@ import { getScanResults, deleteScanResult } from '@/lib/storage';
 import { getGrade, getGradeColor } from '@/lib/types';
 import { PieChart } from '@/components/PieChart';
 import { getApiUrl } from '@/lib/query-client';
-import { authHeaders } from '@/lib/auth-token';
+import { authHeaders, getAuthToken } from '@/lib/auth-token';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { ScanResult } from '@/lib/types';
 import Colors from '@/constants/colors';
 
@@ -20,6 +22,8 @@ const C = Colors.light;
 function formatMark(value: number): string {
   return Number(value).toFixed(2).replace(/\.?0+$/, '');
 }
+
+import { sortResultsByRollNumber, generateTeacherCSV, generateStudentCSV, generateRollWiseCSV, downloadCSV } from '@/lib/export-utils';
 
 function ResultCard({
   item,
@@ -51,8 +55,17 @@ function ResultCard({
         <Text style={styles.gradeText}>{grade}</Text>
       </View>
       <View style={styles.resultContent}>
-        <Text style={styles.resultName}>{item.answerKeyName}</Text>
-        <Text style={styles.resultSubject}>{item.subject}</Text>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.resultName}>{item.answerKeyName}</Text>
+          {item.detectedRollNumber ? (
+            <View style={styles.rollBadge}>
+              <Text style={styles.rollBadgeText}>Roll: {item.detectedRollNumber}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={styles.resultSubject}>
+          {item.subject} {item.detectedSet ? `· ${item.detectedSet}` : ''}
+        </Text>
         <Text style={styles.resultDate}>{dateStr}</Text>
       </View>
       <View style={styles.resultScoreArea}>
@@ -69,6 +82,7 @@ function ResultCard({
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const [results, setResults] = useState<ScanResult[]>([]);
+  const [sortByRoll, setSortByRoll] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -90,6 +104,50 @@ export default function HistoryScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     loadResults();
   };
+
+  const handleExportTeacherCSV = async () => {
+    if (results.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const csvData = generateTeacherCSV(results, 'Complete Evaluation Ledger');
+    await downloadCSV(csvData, 'omr_teacher_master_ledger.csv');
+  };
+
+  const handleExportStudentCSV = async () => {
+    if (results.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const csvData = generateStudentCSV(results, 'Complete Student Scorecards');
+    await downloadCSV(csvData, 'omr_student_scorecards.csv');
+  };
+
+  const handleExportPDFDossier = async () => {
+    if (results.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const baseUrl = getApiUrl();
+      const token = getAuthToken();
+      const ids = results.map(r => r.id).join(',');
+      const url = `${baseUrl}api/results/export/pdf?ids=${encodeURIComponent(ids)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+
+      if (Platform.OS === 'web') {
+        window.open(url, '_blank');
+      } else {
+        const fileUri = `${FileSystem.cacheDirectory}omr_master_dossier.pdf`;
+        const downloadRes = await FileSystem.downloadAsync(url, fileUri, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(downloadRes.uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'Export OMR Master PDF Dossier',
+          });
+        }
+      }
+    } catch (e: any) {
+      Alert.alert('PDF Export Error', e.message || 'Could not generate PDF dossier.');
+    }
+  };
+
+  const displayedResults = sortByRoll ? sortResultsByRollNumber(results) : results;
 
   const openPasswordModal = (id: string) => {
     setPendingId(id);
@@ -148,12 +206,62 @@ export default function HistoryScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 12 + webTopInset }]}>
-        <Text style={styles.title}>History</Text>
-        <Text style={styles.subtitle}>{results.length} total scans</Text>
+        <View>
+          <Text style={styles.title}>History</Text>
+          <Text style={styles.subtitle}>{results.length} total scans</Text>
+        </View>
+        {results.length > 0 ? (
+          <View style={styles.headerExports}>
+            <Pressable
+              style={({ pressed }) => [styles.miniExportBtn, styles.teacherBtnBg, pressed && styles.pressed]}
+              onPress={handleExportTeacherCSV}
+            >
+              <Ionicons name="analytics-outline" size={13} color={C.white} />
+              <Text style={styles.miniExportText}>Teacher</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.miniExportBtn, styles.studentBtnBg, pressed && styles.pressed]}
+              onPress={handleExportStudentCSV}
+            >
+              <Ionicons name="school-outline" size={13} color={C.white} />
+              <Text style={styles.miniExportText}>Student</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.miniExportBtn, styles.pdfBtnBg, pressed && styles.pressed]}
+              onPress={handleExportPDFDossier}
+            >
+              <Ionicons name="document-text-outline" size={13} color={C.white} />
+              <Text style={styles.miniExportText}>PDF Dossier</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
+      {results.length > 1 ? (
+        <View style={styles.filterRow}>
+          <Pressable
+            style={[styles.filterChip, !sortByRoll && styles.filterChipActive]}
+            onPress={() => setSortByRoll(false)}
+          >
+            <Ionicons name="time-outline" size={14} color={!sortByRoll ? C.white : C.textSecondary} />
+            <Text style={[styles.filterChipText, !sortByRoll && styles.filterChipTextActive]}>
+              Newest First
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.filterChip, sortByRoll && styles.filterChipActive]}
+            onPress={() => setSortByRoll(true)}
+          >
+            <Ionicons name="list-outline" size={14} color={sortByRoll ? C.white : C.textSecondary} />
+            <Text style={[styles.filterChipText, sortByRoll && styles.filterChipTextActive]}>
+              Sort by Roll No.
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <FlatList
-        data={results}
+        data={displayedResults}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <ResultCard
@@ -262,7 +370,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
   header: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   title: {
     fontFamily: 'Nunito_800ExtraBold',
@@ -274,6 +385,76 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: C.textSecondary,
     marginTop: 2,
+  },
+  headerExports: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  miniExportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  teacherBtnBg: {
+    backgroundColor: '#10B981',
+  },
+  studentBtnBg: {
+    backgroundColor: '#0284C7',
+  },
+  pdfBtnBg: {
+    backgroundColor: '#4F46E5',
+  },
+  miniExportText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 11,
+    color: C.white,
+  },
+  exportAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#10B981',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+  },
+  exportAllBtnText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: C.white,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 10,
+    marginBottom: 14,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.cardBorder,
+  },
+  filterChipActive: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
+  },
+  filterChipText: {
+    fontFamily: 'Nunito_600SemiBold',
+    fontSize: 12,
+    color: C.textSecondary,
+  },
+  filterChipTextActive: {
+    color: C.white,
   },
   list: {
     paddingHorizontal: 20,
@@ -302,6 +483,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.cardBorder,
     gap: 12,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  rollBadge: {
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  rollBadgeText: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 11,
+    color: C.primary,
   },
   gradeCircle: {
     width: 48,

@@ -65,4 +65,46 @@ ENV/
 
 # App specific data
 updated_omr_report.pdf
+test_output_dossier.pdf
+test_results.txt
+test_dossier.json
+bubblesheet_local.json
+verified_output.json
+dist_check.js
+dist_test.js
+
+# Temporary test/diagnostic image outputs
+crop_*.png
+debug_*.png
+diagnostic_*.png
+thumb_*.png
+test_warped_ref.png
+debug_crops_eval/
+.playwright-mcp/
+scratch/
+
+# Root diagnostic & calibration scripts
+benchmark_*.py
+calibrate_*.py
+check_*.py
+compare_*.py
+crop_*.py
+debug_*.py
+detect_*.py
+diagnose_*.py
+dump_*.py
+evaluate_*.py
+extract_*.py
+find_*.py
+inspect_*.py
+inspect_*.ts
+preview_*.py
+run_validation_suite.py
+save_*.py
+test_*.py
+test_*.ts
+verify_*.py
+audit_all_bubbles.py
+analyze_bubble_grid.py
+
 

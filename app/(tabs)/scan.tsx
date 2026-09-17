@@ -19,6 +19,15 @@ import Colors from '@/constants/colors';
 
 const C = Colors.light;
 
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import { sortResultsByRollNumber, generateTeacherCSV, generateStudentCSV, generateRollWiseCSV, downloadCSV } from '@/lib/export-utils';
+import { getGrade, getGradeColor } from '@/lib/types';
+
+function formatMark(value: number): string {
+  return Number(value).toFixed(2).replace(/\.?0+$/, '');
+}
+
 export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const [keys, setKeys] = useState<AnswerKey[]>([]);
@@ -26,14 +35,23 @@ export default function ScanScreen() {
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
   const [processingIndex, setProcessingIndex] = useState(0);
+  const [liveStatusText, setLiveStatusText] = useState<string>('');
+  const [batchResults, setBatchResults] = useState<ScanResult[]>([]);
   const [batchSummary, setBatchSummary] = useState<{ completed: number; failed: number } | null>(null);
 
-  useFocusEffect(useCallback(() => {
-    getAnswerKeys().then(k => {
-      setKeys(k);
-      if (k.length > 0 && !selectedKey) setSelectedKey(k[0]);
-    });
-  }, [selectedKey]));
+  const loadKeys = useCallback(async () => {
+    const k = await getAnswerKeys();
+    setKeys(k);
+    if (k.length > 0 && !selectedKey) {
+      setSelectedKey(k[0]);
+    }
+  }, [selectedKey]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadKeys();
+    }, [])
+  );
 
   const pickImage = async (useCamera: boolean) => {
     try {
@@ -64,6 +82,7 @@ export default function ScanScreen() {
           return Array.from(new Set(next)).slice(0, 100);
         });
         setBatchSummary(null);
+        setBatchResults([]);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     } catch (e) {
@@ -74,9 +93,11 @@ export default function ScanScreen() {
   const processSingleImage = async (imageUri: string, answerKey: AnswerKey): Promise<ScanResult> => {
       const formData = new FormData();
 
-      const uriParts = imageUri.split('.');
-      const ext = uriParts[uriParts.length - 1] || 'jpg';
-      
+      let ext = 'jpg';
+      if (imageUri.startsWith('data:image/png') || imageUri.includes('.png')) {
+        ext = 'png';
+      }
+
       if (Platform.OS === 'web') {
         const response = await fetch(imageUri);
         const blob = await response.blob();
@@ -112,32 +133,53 @@ export default function ScanScreen() {
       );
       const detectedSet: string = data.detectedSet || '';
       const detectedRollNumber: string = data.detectedRollNumber || '';
-      const gradingAnswers = answerKey.setAnswers?.[detectedSet] || answerKey.answers;
+      const annotatedImage: string | undefined = data.annotatedImage || undefined;
 
-      if (answerKey.setAnswers && !answerKey.setAnswers[detectedSet]) {
-        throw new Error(
-          `${detectedSet || 'A set'} has no answer key configured. Complete all six set tabs first.`
-        );
+      let matchedSetAnswers: string[][] | undefined;
+      if (answerKey.setAnswers) {
+        if (detectedSet && answerKey.setAnswers[detectedSet]?.length) {
+          matchedSetAnswers = answerKey.setAnswers[detectedSet];
+        } else if (detectedSet) {
+          const cleanDetected = detectedSet.toUpperCase().replace(/\s+/g, '');
+          const matchedKey = Object.keys(answerKey.setAnswers).find(
+            (k) => k.toUpperCase().replace(/\s+/g, '') === cleanDetected
+          );
+          if (matchedKey && answerKey.setAnswers[matchedKey]?.length) {
+            matchedSetAnswers = answerKey.setAnswers[matchedKey];
+          }
+        }
       }
+
+      const numQuestions = answerKey.totalQuestions;
+      const baseAnswers = matchedSetAnswers || answerKey.answers || [];
+      const gradingAnswers = Array.from({ length: numQuestions }, (_, i) => {
+        const ans = baseAnswers[i];
+        // Only use the answer if it's a non-empty array; never default to 'A'
+        return (Array.isArray(ans) && ans.length > 0) ? ans : [];
+      });
+
+      const T = Number(answerKey.marksPerQuestion) > 0 ? Number(answerKey.marksPerQuestion) : 3.0;
+      const optsCount = answerKey.optionsPerQuestion || 6;
 
       const questionResults: QuestionResult[] = gradingAnswers.map((correct, i) => {
         const selected = detectedAnswers[i] || [];
-        // Each question's max marks = number of correct options it has
-        const questionMarks = Math.max(correct.length, 1);
-        const grading = calculateQuestionMark(correct, selected, questionMarks);
+        const grading = calculateQuestionMark(correct, selected, T, optsCount);
         return {
           questionNumber: i + 1,
           selected,
           correct,
           isCorrect: grading.isExactMatch,
           mark: grading.mark,
+          maxMarks: T,
+          baseScore: grading.baseScore,
+          penalty: grading.penalty,
           correctSelected: grading.correctSelected,
           wrongSelected: grading.wrongSelected,
+          totalSelected: grading.totalSelected,
         };
       });
 
-      // Total marks = sum of correct option counts across all questions
-      const totalMarks = gradingAnswers.reduce((sum, correct) => sum + Math.max(correct.length, 1), 0);
+      const totalMarks = numQuestions * T;
       const score = questionResults.reduce((sum, question) => sum + question.mark, 0);
       const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
 
@@ -155,6 +197,7 @@ export default function ScanScreen() {
         questionResults,
         scannedAt: new Date().toISOString(),
         imageUri,
+        annotatedImage,
         detectedSet,
         detectedRollNumber,
       };
@@ -166,28 +209,37 @@ export default function ScanScreen() {
     const answerKey = selectedKey;
     setProcessing(true);
     setBatchSummary(null);
+    setBatchResults([]);
     setProcessingIndex(0);
+    setLiveStatusText('Starting evaluation...');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     let completed = 0;
     let failed = 0;
+    const currentResults: ScanResult[] = [];
     let firstResult: ScanResult | null = null;
 
     for (let i = 0; i < imagesToProcess.length; i += 1) {
       setProcessingIndex(i + 1);
+      setLiveStatusText(`Evaluating Sheet ${i + 1} of ${imagesToProcess.length}...`);
       try {
         const result = await processSingleImage(imagesToProcess[i], answerKey);
         await saveScanResult(result);
+        currentResults.push(result);
         if (!firstResult) firstResult = result;
         completed += 1;
+        setLiveStatusText(`Sheet ${i + 1}/${imagesToProcess.length}: Roll ${result.detectedRollNumber || 'N/A'} (${result.detectedSet || 'No Set'}) - ${result.score.toFixed(1)}/${result.totalMarks} Marks`);
       } catch (err) {
         failed += 1;
         console.error(`OMR batch item ${i + 1} failed`, err);
       }
     }
 
+    const sorted = sortResultsByRollNumber(currentResults);
+    setBatchResults(sorted);
     setProcessing(false);
     setProcessingIndex(0);
+    setLiveStatusText('');
     setImageUris([]);
     setBatchSummary({ completed, failed });
     Haptics.notificationAsync(
@@ -198,6 +250,52 @@ export default function ScanScreen() {
 
     if (imagesToProcess.length === 1 && firstResult) {
       router.push({ pathname: '/scan-result', params: { resultId: firstResult.id } });
+    }
+  };
+
+  const handleExportTeacherCSV = async () => {
+    if (batchResults.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const examName = selectedKey?.name || 'Exam';
+    const csvData = generateTeacherCSV(batchResults, `${examName} - Teacher Master Ledger`);
+    const fileName = `${examName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Teacher_Master_Ledger.csv`;
+    await downloadCSV(csvData, fileName);
+  };
+
+  const handleExportStudentCSV = async () => {
+    if (batchResults.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const examName = selectedKey?.name || 'Exam';
+    const csvData = generateStudentCSV(batchResults, `${examName} - Student Scorecards`);
+    const fileName = `${examName.replace(/[^a-zA-Z0-9_-]/g, '_')}_Student_Scorecards.csv`;
+    await downloadCSV(csvData, fileName);
+  };
+
+  const handleExportPDFDossier = async () => {
+    if (batchResults.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const baseUrl = getApiUrl();
+      const token = getAuthToken();
+      const ids = batchResults.map(r => r.id).join(',');
+      const url = `${baseUrl}api/results/export/pdf?ids=${encodeURIComponent(ids)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+
+      if (Platform.OS === 'web') {
+        window.open(url, '_blank');
+      } else {
+        const fileUri = `${FileSystem.cacheDirectory}omr_master_dossier.pdf`;
+        const downloadRes = await FileSystem.downloadAsync(url, fileUri, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(downloadRes.uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'Export OMR Master PDF Dossier',
+          });
+        }
+      }
+    } catch (e: any) {
+      Alert.alert('PDF Export Error', e.message || 'Could not generate PDF dossier.');
     }
   };
 
@@ -317,61 +415,153 @@ export default function ScanScreen() {
           )}
         </View>
 
-        {selectedKey && imageUris.length > 0 ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.scanButton,
-              pressed && styles.pressed,
-              processing && styles.scanButtonDisabled,
-            ]}
-            onPress={processImages}
-            disabled={processing}
-          >
-            {processing ? (
-              <View style={styles.processingRow}>
-                <ActivityIndicator color={C.white} />
-                <Text style={styles.scanButtonText}>
-                  Processing {processingIndex} of {imageUris.length}...
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.processingRow}>
-                <Ionicons name="scan" size={22} color={C.white} />
-                <Text style={styles.scanButtonText}>
-                  {imageUris.length > 1 ? `Process ${imageUris.length} Sheets` : 'Scan & Grade'}
-                </Text>
-              </View>
-            )}
-          </Pressable>
-        ) : null}
-
-        {batchSummary ? (
-          <View style={styles.batchSummaryCard}>
-            <Ionicons
-              name={batchSummary.failed === 0 ? 'checkmark-circle' : 'alert-circle'}
-              size={24}
-              color={batchSummary.failed === 0 ? C.success : C.warning}
-            />
+        {!selectedKey && imageUris.length > 0 ? (
+          <View style={[styles.infoCard, { borderColor: C.warning, borderWidth: 1 }]}>
+            <Ionicons name="warning-outline" size={20} color={C.warning} />
             <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>Batch processing complete</Text>
+              <Text style={[styles.infoTitle, { color: C.warning }]}>No Answer Key Selected</Text>
               <Text style={styles.infoText}>
-                {batchSummary.completed} saved
-                {batchSummary.failed > 0 ? ` · ${batchSummary.failed} failed` : ''}
+                Please select or create an Answer Key above to start grading your {imageUris.length} selected sheet{imageUris.length > 1 ? 's' : ''}.
               </Text>
             </View>
-            <Pressable onPress={() => router.push('/(tabs)/history')}>
-              <Text style={styles.viewHistoryText}>View history</Text>
+          </View>
+        ) : null}
+
+        {selectedKey && imageUris.length > 0 ? (
+          <View style={{ marginTop: 8 }}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.scanButton,
+                pressed && styles.pressed,
+                processing && styles.scanButtonDisabled,
+              ]}
+              onPress={processImages}
+              disabled={processing}
+            >
+              {processing ? (
+                <View style={styles.processingRow}>
+                  <ActivityIndicator color={C.white} />
+                  <Text style={styles.scanButtonText}>
+                    Processing {processingIndex} of {imageUris.length}...
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.processingRow}>
+                  <Ionicons name="scan" size={22} color={C.white} />
+                  <Text style={styles.scanButtonText}>
+                    {imageUris.length > 1 ? `Evaluate ${imageUris.length} Sheets (Bulk)` : 'Scan & Grade Sheet'}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+            {processing && liveStatusText ? (
+              <Text style={styles.liveStatusText}>{liveStatusText}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {batchResults.length > 0 ? (
+          <View style={styles.batchSection}>
+            <View style={styles.batchHeaderCard}>
+              <View style={styles.batchHeaderLeft}>
+                <Ionicons name="documents" size={26} color={C.primary} />
+                <View>
+                  <Text style={styles.batchTitle}>Bulk Evaluation Complete</Text>
+                  <Text style={styles.batchSubtitle}>
+                    {batchResults.length} {batchResults.length === 1 ? 'sheet' : 'sheets'} evaluated · Sorted Roll-Number-Wise
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Tri-Export Action Suite */}
+            <View style={styles.batchActionsRow}>
+              <Pressable
+                style={({ pressed }) => [styles.batchActionBtn, styles.teacherBtnBg, pressed && styles.pressed]}
+                onPress={handleExportTeacherCSV}
+              >
+                <Ionicons name="analytics-outline" size={16} color={C.white} />
+                <Text style={styles.batchActionBtnText}>Teacher CSV</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.batchActionBtn, styles.studentBtnBg, pressed && styles.pressed]}
+                onPress={handleExportStudentCSV}
+              >
+                <Ionicons name="school-outline" size={16} color={C.white} />
+                <Text style={styles.batchActionBtnText}>Student CSV</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.batchActionBtn, styles.pdfBtnBg, pressed && styles.pressed]}
+                onPress={handleExportPDFDossier}
+              >
+                <Ionicons name="document-text-outline" size={16} color={C.white} />
+                <Text style={styles.batchActionBtnText}>PDF Dossier</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.rosterSectionTitle}>Roll Number Roster ({batchResults.length})</Text>
+            <View style={styles.rosterCard}>
+              <View style={styles.rosterHeaderRow}>
+                <Text style={[styles.rosterHeaderCell, { width: 45 }]}>#</Text>
+                <Text style={[styles.rosterHeaderCell, { flex: 1.2 }]}>Roll No.</Text>
+                <Text style={[styles.rosterHeaderCell, { flex: 0.9 }]}>Set</Text>
+                <Text style={[styles.rosterHeaderCell, { flex: 1.3, textAlign: 'right' }]}>Score</Text>
+                <Text style={[styles.rosterHeaderCell, { width: 50, textAlign: 'center' }]}>Grade</Text>
+              </View>
+              {batchResults.map((item, idx) => {
+                const grade = getGrade(item.percentage);
+                return (
+                  <Pressable
+                    key={item.id || idx}
+                    style={({ pressed }) => [
+                      styles.rosterRow,
+                      idx % 2 === 1 && styles.rosterRowAlt,
+                      pressed && styles.pressed,
+                    ]}
+                    onPress={() => router.push({ pathname: '/scan-result', params: { resultId: item.id } })}
+                  >
+                    <Text style={[styles.rosterCellText, { width: 45, color: C.textLight }]}>{idx + 1}</Text>
+                    <Text style={[styles.rosterCellBold, { flex: 1.2 }]}>
+                      {item.detectedRollNumber || '—'}
+                    </Text>
+                    <View style={{ flex: 0.9 }}>
+                      <View style={styles.setChipMini}>
+                        <Text style={styles.setChipMiniText}>{item.detectedSet || 'N/A'}</Text>
+                      </View>
+                    </View>
+                    <View style={{ flex: 1.3, alignItems: 'flex-end' }}>
+                      <Text style={styles.rosterScoreText}>
+                        {formatMark(item.score)}/{formatMark(item.totalMarks)}
+                      </Text>
+                      <Text style={styles.rosterPercentText}>{Math.round(item.percentage)}%</Text>
+                    </View>
+                    <View style={{ width: 50, alignItems: 'center' }}>
+                      <View style={[styles.gradeBadgeMini, { backgroundColor: getGradeColor(grade) }]}>
+                        <Text style={styles.gradeBadgeMiniText}>{grade}</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [styles.exportHistoryBtn, pressed && styles.pressed]}
+              onPress={() => router.push('/(tabs)/history')}
+            >
+              <Ionicons name="time-outline" size={18} color={C.primary} />
+              <Text style={styles.exportHistoryBtnText}>View All in History</Text>
             </Pressable>
           </View>
         ) : null}
 
-        {selectedKey ? (
+        {selectedKey && !batchResults.length ? (
           <View style={[styles.infoCard, { marginTop: 20 }]}>
             <Ionicons name="information-circle" size={20} color={C.secondary} />
             <View style={styles.infoContent}>
               <Text style={styles.infoTitle}>Selected: {selectedKey.name}</Text>
               <Text style={styles.infoText}>
-                 {selectedKey.totalQuestions} questions  {selectedKey.optionsPerQuestion} options each
+                 {selectedKey.totalQuestions} questions · {selectedKey.optionsPerQuestion} options each
                  {' · '}{selectedKey.marksPerQuestion} mark{selectedKey.marksPerQuestion === 1 ? '' : 's'} each
               </Text>
             </View>
@@ -557,10 +747,190 @@ const styles = StyleSheet.create({
     color: C.text,
   },
   infoText: {
-    fontFamily: 'Nunito_500Medium',
+    fontFamily: 'Nunito_400Regular',
+    fontSize: 13,
+    color: C.textSecondary,
+    marginTop: 2,
+  },
+  liveStatusText: {
+    fontFamily: 'Nunito_600SemiBold',
+    fontSize: 13,
+    color: C.primary,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  batchSection: {
+    marginTop: 20,
+  },
+  batchHeaderCard: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: C.primary,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 16,
+  },
+  batchHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  batchTitle: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 16,
+    color: C.text,
+  },
+  batchSubtitle: {
+    fontFamily: 'Nunito_600SemiBold',
     fontSize: 12,
     color: C.textSecondary,
     marginTop: 2,
+  },
+  batchActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  batchActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+  },
+  teacherBtnBg: {
+    backgroundColor: '#10B981',
+  },
+  studentBtnBg: {
+    backgroundColor: '#0284C7',
+  },
+  pdfBtnBg: {
+    backgroundColor: '#4F46E5',
+  },
+  batchActionBtnText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: C.white,
+  },
+  csvDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#10B981',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  csvBtnText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: C.white,
+  },
+  rosterSectionTitle: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 16,
+    color: C.text,
+    marginBottom: 10,
+  },
+  rosterCard: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.cardBorder,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  rosterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.sky,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.cardBorder,
+  },
+  rosterHeaderCell: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+    color: C.textSecondary,
+    textTransform: 'uppercase',
+  },
+  rosterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.cardBorder,
+  },
+  rosterRowAlt: {
+    backgroundColor: 'rgba(0, 0, 0, 0.02)',
+  },
+  rosterCellText: {
+    fontFamily: 'Nunito_600SemiBold',
+    fontSize: 13,
+    color: C.text,
+  },
+  rosterCellBold: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 14,
+    color: C.primary,
+  },
+  setChipMini: {
+    backgroundColor: C.sky,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  setChipMiniText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 11,
+    color: C.primary,
+  },
+  rosterScoreText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+    color: C.text,
+  },
+  rosterPercentText: {
+    fontFamily: 'Nunito_500Medium',
+    fontSize: 11,
+    color: C.textSecondary,
+  },
+  gradeBadgeMini: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  gradeBadgeMiniText: {
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 12,
+    color: '#1E1B2E',
+  },
+  exportHistoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: C.card,
+    borderWidth: 1.5,
+    borderColor: C.cardBorder,
+    borderRadius: 14,
+    paddingVertical: 14,
+  },
+  exportHistoryBtnText: {
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 14,
+    color: C.primary,
   },
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
 });

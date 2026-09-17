@@ -55,13 +55,14 @@ function setupCors(app: express.Application) {
 function setupBodyParsing(app: express.Application) {
   app.use(
     express.json({
+      limit: "50mb",
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       },
     }),
   );
 
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 }
 
 function setupRequestLogging(app: express.Application) {
@@ -177,8 +178,9 @@ function configureExpoAndLanding(app: express.Application) {
       return next();
     }
 
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
+    if (req.path === "/manifest") {
+      const platform = req.header("expo-platform") || "web";
+      return serveExpoManifest(platform, res);
     }
 
     const platform = req.header("expo-platform");
@@ -186,7 +188,8 @@ function configureExpoAndLanding(app: express.Application) {
       return serveExpoManifest(platform, res);
     }
 
-    if (req.path === "/") {
+    // If explicit mobile preview is requested via ?preview=mobile
+    if (req.path === "/" && req.query.preview === "mobile") {
       return serveLandingPage({
         req,
         res,
@@ -195,13 +198,31 @@ function configureExpoAndLanding(app: express.Application) {
       });
     }
 
+    // Default browser requests to root or SPA routes serve the static web app
     next();
   });
 
+  app.use(express.static(path.resolve(process.cwd(), "public")));
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
-  log("Expo routing: Checking expo-platform header on / and /manifest");
+  // SPA fallback for HTML5 history routing
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "GET" || req.path.startsWith("/api")) {
+      return next();
+    }
+    const publicIndex = path.resolve(process.cwd(), "public", "index.html");
+    if (fs.existsSync(publicIndex)) {
+      return res.sendFile(publicIndex);
+    }
+    const indexPath = path.resolve(process.cwd(), "static-build", "index.html");
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+    next();
+  });
+
+  log("Web App: Serving public/ as responsive standalone Web Application");
 }
 
 function setupErrorHandler(app: express.Application) {

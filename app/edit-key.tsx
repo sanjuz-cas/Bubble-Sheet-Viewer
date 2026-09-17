@@ -26,6 +26,7 @@ export default function EditKeyScreen() {
   const [subject, setSubject] = useState('Math');
   const [totalQuestions, setTotalQuestions] = useState('30');
   const [optionsCount, setOptionsCount] = useState(6);
+  const [marksPerQuestion, setMarksPerQuestion] = useState('3.0');
 
   const [answers, setAnswers] = useState<AnswerOptions[]>([]);
   const [multiSet, setMultiSet] = useState(false);
@@ -41,11 +42,12 @@ export default function EditKeyScreen() {
           setSubject(k.subject);
           setTotalQuestions(String(k.totalQuestions));
           setOptionsCount(k.optionsPerQuestion);
-           setAnswers(k.answers.map(answer => Array.isArray(answer) ? answer : [answer]));
-           if (k.setAnswers) {
-             setMultiSet(true);
-             setAnswersBySet(k.setAnswers);
-           }
+          setMarksPerQuestion(String(k.marksPerQuestion || 3.0));
+          setAnswers(k.answers.map(answer => Array.isArray(answer) ? answer : [answer]));
+          if (k.setAnswers) {
+            setMultiSet(true);
+            setAnswersBySet(k.setAnswers);
+          }
         }
       });
     }
@@ -88,55 +90,58 @@ export default function EditKeyScreen() {
     setMultiSet(true);
   };
 
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+      window.alert(`${title}\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert('Missing Name', 'Please enter a name for this answer key.');
-      return;
-    }
+    const keyName = name.trim() || `${subject} Exam ${new Date().toLocaleDateString()}`;
     if (qCount < 1 || qCount > 200) {
-      Alert.alert('Invalid Questions', 'Enter between 1 and 200 questions.');
+      showAlert('Invalid Questions', 'Enter between 1 and 200 questions.');
       return;
     }
-    const marks = 1;
+    const marks = parseFloat(marksPerQuestion) > 0 ? parseFloat(marksPerQuestion) : 3.0;
 
-    const keySets = multiSet
-      ? SETS.map(setName => ({
-        name: setName,
-        answers: answersBySet[setName] || answers,
-      }))
-      : [{ name: 'Answer key', answers }];
-    const incompleteSet = keySets.find(({ answers: setAnswers }) =>
-      setAnswers.slice(0, qCount).some(options => options.length === 0)
-    );
-    if (incompleteSet) {
-      Alert.alert(
-        'Missing Correct Answers',
-        `Select at least one correct choice for every question in ${incompleteSet.name}.`
-      );
-      return;
-    }
+    // Use current active answers as base template
+    const baseAnswers = (multiSet ? (answersBySet[activeSet] || answersBySet['SET 1'] || answers) : answers).slice(0, qCount);
 
+    // Build normalized set answers, filling any empty set from baseAnswers
     const normalizedSetAnswers = multiSet
-      ? Object.fromEntries(SETS.map(setName => [
-        setName,
-         (answersBySet[setName] || answers).slice(0, qCount),
-      ]))
+      ? Object.fromEntries(SETS.map(setName => {
+          const raw = (answersBySet[setName] || []).slice(0, qCount);
+          const filled = Array.from({ length: qCount }, (_, i) => 
+            (raw[i] && raw[i].length > 0) ? raw[i] : (baseAnswers[i] || ['A'])
+          );
+          return [setName, filled];
+        }))
       : undefined;
+
+    const defaultAnswers = (normalizedSetAnswers ? normalizedSetAnswers['SET 1'] : baseAnswers);
+
     const key: AnswerKey = {
       id: keyId || Crypto.randomUUID(),
-      name: name.trim(),
+      name: keyName,
       subject,
       totalQuestions: qCount,
       optionsPerQuestion: optionsCount,
       marksPerQuestion: marks,
-      answers: (multiSet ? normalizedSetAnswers?.['SET 1'] : answers)?.slice(0, qCount) || [],
+      answers: defaultAnswers,
       ...(normalizedSetAnswers ? { setAnswers: normalizedSetAnswers } : {}),
       createdAt: new Date().toISOString(),
     };
 
-    await saveAnswerKey(key);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.back();
+    try {
+      await saveAnswerKey(key);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } catch (err: any) {
+      console.error('Error saving key:', err);
+      showAlert('Save Error', err?.message || 'Could not save answer key');
+    }
   };
 
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
@@ -217,7 +222,17 @@ export default function EditKeyScreen() {
               ))}
             </View>
           </View>
-
+          <View style={[styles.inputGroup, { flex: 1 }]}>
+            <Text style={styles.label}>Marks/Q (T)</Text>
+            <TextInput
+              style={styles.input}
+              value={marksPerQuestion}
+              onChangeText={setMarksPerQuestion}
+              keyboardType="decimal-pad"
+              placeholder="3.0"
+              placeholderTextColor={C.textLight}
+            />
+          </View>
         </View>
 
         <View style={styles.inputGroup}>

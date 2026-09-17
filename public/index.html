@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BubbleScan AI™ - Autonomous Institutional OMR Evaluation Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%236366F1'/><circle cx='35' cy='35' r='14' fill='%2310B981'/><circle cx='65' cy='35' r='14' fill='%23F43F5E'/><circle cx='50' cy='68' r='14' fill='%2338BDF8'/></svg>">
+  <!-- PDF.js for ultra-fast in-browser multi-page PDF rendering (1 to 200+ pages) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+</head>
+<body>
+  <!-- Global App Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand-group">
+        <div class="brand-logo-glow">
+          <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="4" fill="url(#brand-grad)" stroke="#818CF8" stroke-width="1.5"/>
+            <circle cx="8" cy="8" r="2.2" fill="#10B981" />
+            <circle cx="16" cy="8" r="2.2" fill="#F43F5E" />
+            <circle cx="8" cy="16" r="2.2" fill="#38BDF8" />
+            <circle cx="16" cy="16" r="2.2" fill="#FBBF24" />
+            <defs>
+              <linearGradient id="brand-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#1E1B4B"/>
+                <stop offset="100%" stop-color="#0F172A"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">BubbleScan <span class="brand-badge">AI 2026</span></div>
+          <div class="brand-subtitle">Universal OMR Precision Engine & Visual Dossier Suite</div>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="nav-tabs" id="navTabs">
+        <button class="nav-tab active" data-tab="scanner">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+          Scanner & Bulk
+        </button>
+        <button class="nav-tab" data-tab="roster">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+          Class Ledger & Exports
+          <span class="tab-count-badge" id="rosterCount">0</span>
+        </button>
+        <button class="nav-tab" data-tab="keys">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+          Answer Key Studio
+        </button>
+        <button class="nav-tab" data-tab="analytics">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Analytics & IRT
+        </button>
+      </nav>
+
+      <!-- System Status Indicators -->
+      <div class="header-status">
+        <div class="status-pill status-online">
+          <span class="status-dot"></span>
+          <span class="status-text">Engine 100% Ready</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btnLoadTestImages">
+          ⚡ Load Test Sheets
+          <span class="btn-library-count" id="libraryCountBadge" title="OMR sheets in server library">
+            150
+          </span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main App Content Container -->
+  <main class="app-main">
+    
+    <!-- ═════════════════════════════════════════════════════════════════════
+         TAB 1: SCANNER & BULK EVALUATOR
+         ═════════════════════════════════════════════════════════════════════ -->
+    <section class="tab-pane active" id="pane-scanner">
+      <div class="pane-grid">
+        
+        <!-- Left Column: Upload & Setup -->
+        <div class="card setup-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2 class="card-title">1. Evaluation Setup</h2>
+              <p class="card-desc">Select active answer key & scoring parameters</p>
+            </div>
+            <span class="badge badge-primary" id="activeKeyBadge">SET 1..6 Multi-Key</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="selectAnswerKey">Active Answer Key</label>
+            <div class="select-wrapper">
+              <select id="selectAnswerKey" class="form-select">
+                <option value="default_physics">Physics Semester Final (10 Qs, 6 Options, 6 Sets)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid-2-col">
+            <div class="form-group">
+              <label class="form-label" for="inputMarksCorrect">Marks / Correct</label>
+              <input type="number" id="inputMarksCorrect" class="form-input" value="3.0" step="0.5" min="0.5">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="inputMarksPenalty">Penalty / Wrong</label>
+              <input type="number" id="inputMarksPenalty" class="form-input" value="0.0" step="0.25" min="0">
+            </div>
+          </div>
+
+          <div class="key-summary-box">
+            <div class="key-summary-item">
+              <span class="key-label">Total Questions</span>
+              <span class="key-val" id="dispTotalQ">10 Qs</span>
+            </div>
+            <div class="key-summary-item">
+              <span class="key-label">Options / Question</span>
+              <span class="key-val" id="dispTotalOpts">6 (A-F)</span>
+            </div>
+            <div class="key-summary-item">
+              <span class="key-label">Max Score</span>
+              <span class="key-val text-emerald" id="dispMaxScore">30.0</span>
+            </div>
+            <div class="key-summary-item">
+              <span class="key-label">Supported Sets</span>
+              <span class="key-val text-cyan">SET 1 to 6</span>
+            </div>
+          </div>
+
+          <!-- Multiple Correct Marking Formula Card -->
+          <div class="marking-formula-card">
+            <div class="formula-header">
+              <div class="formula-icon-wrap">
+                <svg class="formula-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <div class="formula-header-text">
+                <h4 class="formula-title">Multiple Correct Answer Scheme</h4>
+                <span class="formula-badge">Halving Penalty Rule</span>
+              </div>
+            </div>
+            <div class="formula-equation-box">
+              <div class="formula-math-display">Mark = <span class="frac"><span class="top">m &times; T</span><span class="bottom">n &times; 2<sup>P</sup></span></span> <span class="formula-condition">(when m &ge; 1, else 0)</span></div>
+              <div class="formula-legend">
+                <span><b>m:</b> correct picked</span> &bull; 
+                <span><b>n:</b> total key options</span> &bull; 
+                <span><b>T:</b> weight</span> &bull; 
+                <span><b>P:</b> wrong picked (halves score per error)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-File & Multi-Page PDF Dropzone -->
+          <div class="dropzone-header">
+            <h2 class="card-title">2. Upload OMR Sheets & PDFs</h2>
+            <span class="text-muted" id="dropzoneCount">0 sheets selected</span>
+          </div>
+
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="fileInput" multiple accept="image/png,image/jpeg,image/jpg,application/pdf,.pdf" class="dropzone-input">
+            <div class="dropzone-content">
+              <div class="dropzone-icon-glow">
+                <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+              </div>
+              <div class="dropzone-text-main">Drag & Drop OMR Photos & Multi-Page PDFs Here</div>
+              <div class="dropzone-text-sub">Supports single scans or bulk multi-page PDFs (1 to 200+ pages/OMRs per PDF document)</div>
+              <div class="dropzone-supported">Formats: PDF (Multi-Page 1-200+), PNG, JPG, JPEG • Auto page-by-page extraction</div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="action-buttons-stack">
+            <button class="btn btn-primary btn-lg btn-block" id="btnEvaluateBatch" disabled>
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              Evaluate All OMR Sheets (<span id="btnEvaluateCount">0</span>)
+            </button>
+            <div class="btn-group-grid">
+              <button class="btn btn-secondary" id="btnClearFiles" disabled>Clear Queue</button>
+              <button class="btn btn-accent" id="btnSample12">⚡ 12 Images</button>
+              <button class="btn btn-accent" id="btnSamplePDF50">📑 50-OMR PDF</button>
+              <button class="btn btn-primary" id="btnSamplePDF200" style="background: linear-gradient(135deg, #059669, #10B981);">🏢 200-OMR PDF</button>
+            </div>
+          </div>
+
+          <!-- PDF Unpacking Notification Box -->
+          <div class="progress-box hidden" id="pdfUnpackProgressBox" style="border-color: rgba(56, 189, 248, 0.4); background: rgba(14, 116, 144, 0.15);">
+            <div class="progress-label-row">
+              <span class="progress-title text-cyan" id="pdfUnpackTitle">📑 Unpacking Multi-Page PDF Document...</span>
+              <span class="progress-pct text-cyan" id="pdfUnpackPct">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="pdfUnpackBarFill" style="width: 0%; background: linear-gradient(90deg, #0284C7, #38BDF8);"></div>
+            </div>
+            <div class="progress-sub-row">
+              <span class="text-muted" id="pdfUnpackStatus">Extracting high-resolution pages...</span>
+              <span class="text-cyan font-mono" id="pdfUnpackCount">0 / 0 Pages</span>
+            </div>
+          </div>
+
+          <!-- Live Evaluation Progress Box -->
+          <div class="progress-box hidden" id="evalProgressBox">
+            <div class="progress-label-row">
+              <span class="progress-title" id="progressStatusText">Processing sheets...</span>
+              <span class="progress-pct" id="progressPctText">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="progressBarFill" style="width: 0%"></div>
+            </div>
+            <div class="progress-sub-row">
+              <span class="text-muted" id="progressSpeedText">Initializing engine...</span>
+              <span class="text-muted" id="progressItemCount">0 / 0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Queue Gallery & Live Results Preview -->
+        <div class="card gallery-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2 class="card-title">Upload Queue & Preview</h2>
+              <p class="card-desc">Uploaded OMR sheets & extracted PDF pages ready for grading</p>
+            </div>
+            <span class="badge badge-secondary" id="queueSummaryBadge">Empty Queue</span>
+          </div>
+
+          <!-- Empty Queue State -->
+          <div class="empty-state" id="emptyQueueState">
+            <div class="empty-icon-wrap">
+              <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            </div>
+            <h3 class="empty-title">No OMR Sheets or PDFs Uploaded Yet</h3>
+            <p class="empty-desc">Drag & drop single scans, photos, or multi-page PDF documents (up to 200+ sheets per PDF), or click a preset below to test instantly:</p>
+            <div class="empty-actions-row" style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem;">
+              <button class="btn btn-secondary btn-sm" id="btnEmptyLoadSamples">⚡ Load 12 Images</button>
+              <button class="btn btn-accent btn-sm" id="btnEmptyLoadPDF50">📑 Load 50-OMR PDF</button>
+              <button class="btn btn-primary btn-sm" id="btnEmptyLoadPDF200" style="background: linear-gradient(135deg, #059669, #10B981);">🏢 Load 200-Student Department PDF</button>
+            </div>
+          </div>
+
+          <!-- Image Thumbnail Grid -->
+          <div class="thumbnail-grid hidden" id="thumbnailGrid"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ═════════════════════════════════════════════════════════════════════
+         TAB 2: CLASS LEDGER & EXPORT CENTER
+         ═════════════════════════════════════════════════════════════════════ -->
+    <section class="tab-pane hidden" id="pane-roster">
+      
+      <!-- Top Metrics Dashboard -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-icon-wrap metric-indigo">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          </div>
+          <div class="metric-content">
+            <span class="metric-label">Evaluated Sheets</span>
+            <span class="metric-value" id="kpiTotalStudents">0</span>
+            <span class="metric-sub text-cyan" id="kpiSetsDetected">0 Sets detected</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon-wrap metric-emerald">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <div class="metric-content">
+            <span class="metric-label">Class Average Score</span>
+            <span class="metric-value text-emerald" id="kpiAvgScore">0.00</span>
+            <span class="metric-sub" id="kpiAvgPct">0.0% Avg</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon-wrap metric-amber">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          </div>
+          <div class="metric-content">
+            <span class="metric-label">Class Pass Rate</span>
+            <span class="metric-value text-amber" id="kpiPassRate">0.0%</span>
+            <span class="metric-sub" id="kpiPassCount">0 Passed</span>
+          </div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-icon-wrap metric-crimson">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+          </div>
+          <div class="metric-content">
+            <span class="metric-label">Score Range</span>
+            <span class="metric-value text-cyan"><span id="kpiHigh">0</span> / <span id="kpiLow" class="text-muted">0</span></span>
+            <span class="metric-sub text-muted">High / Low Marks</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export Action Suite Banner -->
+      <div class="card export-banner-card">
+        <div class="export-banner-left">
+          <div class="export-banner-badge">Dual CSV & Institutional PDF Suite</div>
+          <h3 class="export-banner-title">Export Verified Class Records & Visual Dossiers</h3>
+          <p class="export-banner-desc">Generate official institutional outputs formatted roll-number wise for teachers, students, and administration.</p>
+        </div>
+        <div class="export-banner-actions">
+          <button class="btn btn-export btn-teacher" id="btnExportTeacherCSV">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Teacher Master CSV
+          </button>
+          <button class="btn btn-export btn-student" id="btnExportStudentCSV">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Student Scorecards CSV
+          </button>
+          <button class="btn btn-export btn-pdf" id="btnExportPDFDossier">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+            Full PDF Dossier (1 Page/OMR)
+          </button>
+        </div>
+      </div>
+
+      <!-- Ledger Table Card -->
+      <div class="card table-card">
+        <div class="card-header table-header-flex">
+          <div class="card-title-group">
+            <h2 class="card-title">Class Evaluation Master Ledger</h2>
+            <p class="card-desc">Roll number sorted institutional evaluation roster</p>
+          </div>
+          
+          <!-- Table Controls -->
+          <div class="table-controls">
+            <div class="search-input-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input type="text" id="inputTableSearch" class="form-input search-input" placeholder="Search Roll Number...">
+            </div>
+            
+            <div class="select-wrapper">
+              <select id="filterSet" class="form-select filter-select">
+                <option value="ALL">All Sets (1-6)</option>
+                <option value="SET 1">SET 1</option>
+                <option value="SET 2">SET 2</option>
+                <option value="SET 3">SET 3</option>
+                <option value="SET 4">SET 4</option>
+                <option value="SET 5">SET 5</option>
+                <option value="SET 6">SET 6</option>
+              </select>
+            </div>
+
+            <div class="select-wrapper">
+              <select id="filterGrade" class="form-select filter-select">
+                <option value="ALL">All Grades</option>
+                <option value="PASS">Pass Only (≥50%)</option>
+                <option value="FAIL">Fail Only (&lt;50%)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="table-responsive">
+          <table class="roster-table" id="rosterTable">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Roll Number</th>
+                <th>Question Set</th>
+                <th>Score</th>
+                <th>Percentage</th>
+                <th>Grade</th>
+                <th>Breakdown (C/P/W/B)</th>
+                <th>Visual Sheet</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="rosterTableBody">
+              <tr>
+                <td colspan="9" class="table-empty-row">No evaluation records yet. Upload and evaluate sheets in the Scanner tab.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════════════════════════════════════════════════════════════════
+         TAB 3: ANSWER KEY STUDIO
+         ═════════════════════════════════════════════════════════════════════ -->
+    <section class="tab-pane hidden" id="pane-keys">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">Answer Key Matrix Studio</h2>
+            <p class="card-desc">Configure multi-set correct choices (Single & Multiple correct supported)</p>
+          </div>
+          <div class="key-actions">
+            <button class="btn btn-secondary btn-sm" id="btnResetKeyDefaults">Reset to Default Sets</button>
+            <button class="btn btn-primary btn-sm" id="btnSaveKey">Save Key Configuration</button>
+          </div>
+        </div>
+
+        <!-- Set Selector Tabs -->
+        <div class="set-selector-bar" id="setSelectorBar">
+          <button class="set-tab active" data-set="SET 1">SET 1</button>
+          <button class="set-tab" data-set="SET 2">SET 2</button>
+          <button class="set-tab" data-set="SET 3">SET 3</button>
+          <button class="set-tab" data-set="SET 4">SET 4</button>
+          <button class="set-tab" data-set="SET 5">SET 5</button>
+          <button class="set-tab" data-set="SET 6">SET 6</button>
+        </div>
+
+        <!-- Interactive Bubble Grid Editor -->
+        <div class="key-matrix-container">
+          <div class="matrix-grid-2-col">
+            <!-- Left Column: Q1 to Q5 -->
+            <div class="matrix-column" id="matrixColLeft">
+              <h3 class="matrix-col-title">Questions 1 to 5</h3>
+              <div class="matrix-rows-wrap" id="matrixRowsLeft"></div>
+            </div>
+
+            <!-- Right Column: Q6 to Q10 -->
+            <div class="matrix-column" id="matrixColRight">
+              <h3 class="matrix-col-title">Questions 6 to 10</h3>
+              <div class="matrix-rows-wrap" id="matrixRowsRight"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════════════════════════════════════════════════════════════════
+         TAB 4: ANALYTICS & IRT INSIGHTS
+         ═════════════════════════════════════════════════════════════════════ -->
+    <section class="tab-pane hidden" id="pane-analytics">
+      <div class="pane-grid-equal">
+        
+        <!-- Grade Distribution Card -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2 class="card-title">Grade Distribution</h2>
+              <p class="card-desc">Class performance spread across letter grades</p>
+            </div>
+          </div>
+          <div class="chart-bars-container" id="gradeChartBars"></div>
+        </div>
+
+        <!-- Item Difficulty Index (IRT) -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h2 class="card-title">Item Response Difficulty Matrix</h2>
+              <p class="card-desc">Question-level discrimination and success rate</p>
+            </div>
+          </div>
+          <div class="item-analysis-list" id="itemAnalysisList"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ═════════════════════════════════════════════════════════════════════
+       INTERACTIVE MODAL: VISUAL GRADED OMR SHEET INSPECTOR
+       ═════════════════════════════════════════════════════════════════════ -->
+  <div class="modal-backdrop hidden" id="modalInspector">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-badge" id="modalStudentBadge">Roll: 00000 • SET 1</div>
+          <h2 class="modal-title" id="modalStudentTitle">Visual Graded OMR Sheet Inspector</h2>
+        </div>
+        <button class="modal-close-btn" id="modalCloseBtn">&times;</button>
+      </div>
+
+      <div class="modal-body-split">
+        <!-- Left: High-Res Annotated Overlay -->
+        <div class="modal-left-viewport">
+          <div class="viewport-controls">
+            <span class="legend-chip legend-correct">🟢 Correct</span>
+            <span class="legend-chip legend-wrong">🔴 Wrong</span>
+            <span class="legend-chip legend-missed">🟡 Missed</span>
+            <span class="legend-chip legend-header">🔵 Roll/Set</span>
+          </div>
+          <div class="annotated-image-wrapper">
+            <img id="modalAnnotatedImg" src="" alt="Graded OMR Sheet Overlay" class="annotated-img">
+          </div>
+        </div>
+
+        <!-- Right: Question Table & Scorecard -->
+        <div class="modal-right-scorecard">
+          <div class="scorecard-summary-card">
+            <div class="scorecard-kpi">
+              <span class="sc-label">Total Score</span>
+              <span class="sc-val text-emerald" id="modalTotalScore">0.0 / 30.0</span>
+            </div>
+            <div class="scorecard-kpi">
+              <span class="sc-label">Percentage</span>
+              <span class="sc-val text-cyan" id="modalPct">0.0%</span>
+            </div>
+            <div class="scorecard-kpi">
+              <span class="sc-label">Grade</span>
+              <span class="sc-val text-amber" id="modalGrade">F</span>
+            </div>
+          </div>
+
+          <div class="scorecard-action-row">
+            <button class="btn btn-primary btn-sm btn-block" id="modalBtnDownloadPDF">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              Download 1-Page Official Student PDF
+            </button>
+          </div>
+
+          <h4 class="scorecard-subheading">Item-by-Item Evaluation Breakdown</h4>
+          <div class="modal-table-scroll">
+            <table class="breakdown-table">
+              <thead>
+                <tr>
+                  <th>Q#</th>
+                  <th>Marked</th>
+                  <th>Answer Key</th>
+                  <th>Analysis / Halving Rule</th>
+                  <th>Marks</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="modalBreakdownBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

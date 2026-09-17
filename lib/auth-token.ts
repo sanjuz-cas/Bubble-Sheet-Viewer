@@ -5,11 +5,22 @@ export function setAuthToken(token: string | null): void {
 }
 
 export function getAuthToken(): string | null {
-  return _token;
+  if (_token) return _token;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const stored = window.localStorage.getItem('bubblescan_token');
+      if (stored) {
+        _token = stored;
+        return stored;
+      }
+    } catch {}
+  }
+  return null;
 }
 
 export function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (_token) headers["Authorization"] = `Bearer ${_token}`;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
