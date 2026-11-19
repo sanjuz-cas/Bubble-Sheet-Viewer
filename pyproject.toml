@@ -4,10 +4,14 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "flask>=3.1",
     "imutils>=0.5.4",
     "numpy>=2.4.2",
     "opencv-python-headless>=4.13.0.92",
 ]
+
+[tool.vercel]
+entrypoint = "attached_assets.omr_core_1772026909014:app"
 
 [tool.flake8]
 max-line-length = 88

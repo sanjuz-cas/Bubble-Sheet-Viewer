@@ -6,7 +6,12 @@ import os
 from datetime import datetime
 from imutils import contours as imutils_contours
 
-app = Flask(__name__, static_folder="static", static_url_path="/static")
+app = Flask(
+    __name__,
+    template_folder="../public",
+    static_folder="../public",
+    static_url_path="/",
+)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max upload
 
 # Create uploads folder

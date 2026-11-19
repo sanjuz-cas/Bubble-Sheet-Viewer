@@ -1,6 +1,1 @@
-def main():
-    print("Hello from repl-nix-workspace!")
-
-
-if __name__ == "__main__":
-    main()
+from attached_assets.omr_core_1772026909014 import app
